@@ -23,7 +23,7 @@ const zqPartCount = k => G.zm.parts[k].filter(p => p.got).length;
 function zqNear(P) {
   const z = G.zm, q = W.zq; if (!q || !z.parts) return null;
   const d2 = (a, r) => (a[0] - P.pos[0]) ** 2 + (a[2] - P.pos[2]) ** 2 < r * r && Math.abs(a[1] - P.pos[1] - 0.5) < 2.2;
-  for (const w of W.windows) if (w.boards < 6 && d2(w.inside, 1.5)) return { kind: 'window', w, text: '[F長押し] バリケードを修理' };
+  for (const w of W.windows) if (!w.vent && w.boards < 6 && d2(w.inside, 1.5)) return { kind: 'window', w, text: '[F長押し] バリケードを修理' };
   if (d2(q.power, 1.8)) return z.power ? { kind: 'info', text: '電源は入っている' } : { kind: 'power', text: '[F] 電源を入れる' };
   for (const f of z.fuseList) if (!f.got && d2(f.pos, 1.5)) return { kind: 'fuse', f, text: '[F] ヒューズを拾う' };
   for (const k in z.parts) for (const pt of z.parts[k]) if (!pt.got && d2(pt.pos, 1.5)) return { kind: 'part', k, pt, text: `[F] ${ZPART_NAME[k]}の部品を拾う（${zqPartCount(k) + 1}/3）` };
@@ -127,8 +127,17 @@ function zqShot(eye, dir) {
   }
 }
 // ---- windows: zombie arrival / tearing / climbing; player repair ----
+// spawn only where the player can never stand (outside the building / behind closed doors)
+// and only from windows that lead to where the player is (open zones; the vault while fighting the boss)
 function zqPickWindow(P) {
-  const ws = W.windows.filter(w => W.zones[w.zone]);
+  const z = G.zm, inBoss = !!(z && z.boss && z.boss.alive), vaultOpen = !!(W.bossDoor && W.bossDoor.open);
+  const ws = W.windows.filter(w => {
+    if (inBoss) return w.zone === 'X';
+    if (w.zone === 'X') return vaultOpen && W.zones.X;
+    if (!W.zones[w.zone]) return false;
+    if (w.behind && W.zones[w.behind]) return false; // the space behind it is now part of the playable area
+    return true;
+  });
   if (!ws.length) return null;
   const far = ws.filter(w => { const d = Math.hypot(w.outside[0] - P.pos[0], w.outside[2] - P.pos[2]); return d > 5 && d < 48; });
   return pick(far.length ? far : ws);

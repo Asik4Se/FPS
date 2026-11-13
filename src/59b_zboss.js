@@ -31,7 +31,7 @@ function zbStart() {
 // ---------- per-frame AI ----------
 function zbSpawnTick(dt, alive) {
   const z = G.zm; z.spawnT -= dt; z.bossT += dt;
-  if (z.spawnT <= 0 && alive < 11 && z.boss && z.boss.alive) { z.spawnT = Math.max(1.0, 3.4 - z.bossRound * 0.07) / (z.boss.phase >= 3 ? 1.5 : 1); zmSpawnOne(pick(W.zq.arena.spawns)); }
+  if (z.spawnT <= 0 && alive < 11 && z.boss && z.boss.alive) { z.spawnT = Math.max(1.0, 3.4 - z.bossRound * 0.07) / (z.boss.phase >= 3 ? 1.5 : 1); zmSpawnOne(); }
 }
 function zbHitPlayer(P, b, dmg, push) {
   if (!P.alive) return;

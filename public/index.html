@@ -1082,7 +1082,7 @@ function buildLab() {
   const WC = [0.42, 0.40, 0.37], WH = 4.5, T = 0.5, PH = 6;
   W.doors = []; W.buys = []; W.zoneSpawn = {}; W.zones = { A: true }; W.windows = []; W.zq = {};
   // ---- perimeter with boarded windows ----
-  const winDefs = { n: [[-6, 'B'], [6, 'B'], [27, 'F']], s: [[-7, 'D'], [3, 'D'], [-27, 'G']], e: [[-5, 'C'], [5, 'C'], [-22, 'F']], w: [[-5, 'E'], [5, 'E'], [22, 'G']] };
+  const winDefs = { n: [[-34, 'X'], [-20, 'X'], [-6, 'B'], [6, 'B'], [27, 'F']], s: [[-7, 'D'], [3, 'D'], [-27, 'G']], e: [[-5, 'C'], [5, 'C'], [-22, 'F']], w: [[-29, 'X'], [-17, 'X'], [-5, 'E'], [5, 'E'], [22, 'G']] };
   const WIN_OPEN = (c, u0) => ({ a: c - u0 - 0.8, b: c - u0 + 0.8, y0: 0.9, y1: 2.3 });
   wallSeg('x', -35, -42, 42, 0, PH, 2, WC, winDefs.n.map(([x]) => WIN_OPEN(x, -42)));
   wallSeg('x', 35, -42, 42, 0, PH, 2, WC, winDefs.s.map(([x]) => WIN_OPEN(x, -42)));
@@ -1092,7 +1092,8 @@ function buildLab() {
     th = th || 2;
     const inside = [x + nx * (th / 2 + 0.6), 0, z + nz * (th / 2 + 0.6)], outside = [x - nx * (th / 2 + 0.9), 0, z - nz * (th / 2 + 0.9)];
     const col = nx ? B(x - th / 2, 0.9, z - 0.8, x + th / 2, 2.3, z + 0.8, WC, { invis: 1, noRay: 1 }) : B(x - 0.8, 0.9, z - th / 2, x + 0.8, 2.3, z + th / 2, WC, { invis: 1, noRay: 1 });
-    W.windows.push({ pos: [x, 1.6, z], n: [nx, 0, nz], th, inside, outside, boards: 6, zone, col, climbT: 0, swipeT: 0 });
+    const vent = zone === 'X'; // vault breaches: no barricade, zombies climb straight in
+    W.windows.push({ pos: [x, 1.6, z], n: [nx, 0, nz], th, inside, outside, boards: vent ? 0 : 6, vent, zone, behind: null, col, climbT: 0, swipeT: 0 });
   };
   for (const [x, zn] of winDefs.n) addWin(x, -35, 0, 1, zn);
   for (const [x, zn] of winDefs.s) addWin(x, 35, 0, -1, zn);
@@ -1122,6 +1123,7 @@ function buildLab() {
       else door(c - 1.6, f - 0.45, c + 1.6, f + 0.45, a1, b1, cost);
     }
     if (ax === 'z') addWin(f, win[0], win[1], 0, 'A', T); else addWin(win[0], f, 0, win[2], 'A', T);
+    W.windows[W.windows.length - 1].behind = doors[0][2]; // zombies stand in this (still closed) zone before breaking in
   }
   // closed corner blocks (collapsed wings)
   Bc(27, 22.5, 26, 23, 4.0, [0.30, 0.29, 0.27]);
@@ -2763,7 +2765,7 @@ function zmSpawnOne(at) {
   const r = z.round, roll = Math.random();
   const sprintP = clamp((r - 5) * 0.11, 0, 0.8), jogP = clamp((r - 2) * 0.22, 0, 1);
   const kind = roll < sprintP ? 'sprint' : roll < sprintP + jogP * (1 - sprintP) ? 'jog' : 'walk';
-  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: kind === 'sprint' ? BASE_SPEED * 1.5 * rand(0.76, 0.82) : { walk: 1.25, jog: 3.0 }[kind] * rand(0.93, 1.07),
+  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: kind === 'sprint' ? BASE_SPEED * rand(1.04, 1.1) : { walk: 1.15, jog: 2.6 }[kind] * rand(0.93, 1.07),
     rise: 0, atkT: 0, walkT: rand(0, 6), maxHp: zmHP(r), yaw: rand(0, 6.28), stance: 'stand', pose: null, pitch: -0.25, skin: pick(ZSKINS), stuckT: 0, lastPos: [0, 0, 0], bob: rand(0, 6) });
   b.vel = [0, 0, 0];
   G.zombies.push(b); G.ents.push(b);
@@ -2977,7 +2979,7 @@ const zqPartCount = k => G.zm.parts[k].filter(p => p.got).length;
 function zqNear(P) {
   const z = G.zm, q = W.zq; if (!q || !z.parts) return null;
   const d2 = (a, r) => (a[0] - P.pos[0]) ** 2 + (a[2] - P.pos[2]) ** 2 < r * r && Math.abs(a[1] - P.pos[1] - 0.5) < 2.2;
-  for (const w of W.windows) if (w.boards < 6 && d2(w.inside, 1.5)) return { kind: 'window', w, text: '[F長押し] バリケードを修理' };
+  for (const w of W.windows) if (!w.vent && w.boards < 6 && d2(w.inside, 1.5)) return { kind: 'window', w, text: '[F長押し] バリケードを修理' };
   if (d2(q.power, 1.8)) return z.power ? { kind: 'info', text: '電源は入っている' } : { kind: 'power', text: '[F] 電源を入れる' };
   for (const f of z.fuseList) if (!f.got && d2(f.pos, 1.5)) return { kind: 'fuse', f, text: '[F] ヒューズを拾う' };
   for (const k in z.parts) for (const pt of z.parts[k]) if (!pt.got && d2(pt.pos, 1.5)) return { kind: 'part', k, pt, text: `[F] ${ZPART_NAME[k]}の部品を拾う（${zqPartCount(k) + 1}/3）` };
@@ -3081,8 +3083,17 @@ function zqShot(eye, dir) {
   }
 }
 // ---- windows: zombie arrival / tearing / climbing; player repair ----
+// spawn only where the player can never stand (outside the building / behind closed doors)
+// and only from windows that lead to where the player is (open zones; the vault while fighting the boss)
 function zqPickWindow(P) {
-  const ws = W.windows.filter(w => W.zones[w.zone]);
+  const z = G.zm, inBoss = !!(z && z.boss && z.boss.alive), vaultOpen = !!(W.bossDoor && W.bossDoor.open);
+  const ws = W.windows.filter(w => {
+    if (inBoss) return w.zone === 'X';
+    if (w.zone === 'X') return vaultOpen && W.zones.X;
+    if (!W.zones[w.zone]) return false;
+    if (w.behind && W.zones[w.behind]) return false; // the space behind it is now part of the playable area
+    return true;
+  });
   if (!ws.length) return null;
   const far = ws.filter(w => { const d = Math.hypot(w.outside[0] - P.pos[0], w.outside[2] - P.pos[2]); return d > 5 && d < 48; });
   return pick(far.length ? far : ws);
@@ -3359,7 +3370,7 @@ function zbStart() {
 // ---------- per-frame AI ----------
 function zbSpawnTick(dt, alive) {
   const z = G.zm; z.spawnT -= dt; z.bossT += dt;
-  if (z.spawnT <= 0 && alive < 11 && z.boss && z.boss.alive) { z.spawnT = Math.max(1.0, 3.4 - z.bossRound * 0.07) / (z.boss.phase >= 3 ? 1.5 : 1); zmSpawnOne(pick(W.zq.arena.spawns)); }
+  if (z.spawnT <= 0 && alive < 11 && z.boss && z.boss.alive) { z.spawnT = Math.max(1.0, 3.4 - z.bossRound * 0.07) / (z.boss.phase >= 3 ? 1.5 : 1); zmSpawnOne(); }
 }
 function zbHitPlayer(P, b, dmg, push) {
   if (!P.alive) return;

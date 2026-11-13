@@ -591,7 +591,7 @@ function buildLab() {
   const WC = [0.42, 0.40, 0.37], WH = 4.5, T = 0.5, PH = 6;
   W.doors = []; W.buys = []; W.zoneSpawn = {}; W.zones = { A: true }; W.windows = []; W.zq = {};
   // ---- perimeter with boarded windows ----
-  const winDefs = { n: [[-6, 'B'], [6, 'B'], [27, 'F']], s: [[-7, 'D'], [3, 'D'], [-27, 'G']], e: [[-5, 'C'], [5, 'C'], [-22, 'F']], w: [[-5, 'E'], [5, 'E'], [22, 'G']] };
+  const winDefs = { n: [[-34, 'X'], [-20, 'X'], [-6, 'B'], [6, 'B'], [27, 'F']], s: [[-7, 'D'], [3, 'D'], [-27, 'G']], e: [[-5, 'C'], [5, 'C'], [-22, 'F']], w: [[-29, 'X'], [-17, 'X'], [-5, 'E'], [5, 'E'], [22, 'G']] };
   const WIN_OPEN = (c, u0) => ({ a: c - u0 - 0.8, b: c - u0 + 0.8, y0: 0.9, y1: 2.3 });
   wallSeg('x', -35, -42, 42, 0, PH, 2, WC, winDefs.n.map(([x]) => WIN_OPEN(x, -42)));
   wallSeg('x', 35, -42, 42, 0, PH, 2, WC, winDefs.s.map(([x]) => WIN_OPEN(x, -42)));
@@ -601,7 +601,8 @@ function buildLab() {
     th = th || 2;
     const inside = [x + nx * (th / 2 + 0.6), 0, z + nz * (th / 2 + 0.6)], outside = [x - nx * (th / 2 + 0.9), 0, z - nz * (th / 2 + 0.9)];
     const col = nx ? B(x - th / 2, 0.9, z - 0.8, x + th / 2, 2.3, z + 0.8, WC, { invis: 1, noRay: 1 }) : B(x - 0.8, 0.9, z - th / 2, x + 0.8, 2.3, z + th / 2, WC, { invis: 1, noRay: 1 });
-    W.windows.push({ pos: [x, 1.6, z], n: [nx, 0, nz], th, inside, outside, boards: 6, zone, col, climbT: 0, swipeT: 0 });
+    const vent = zone === 'X'; // vault breaches: no barricade, zombies climb straight in
+    W.windows.push({ pos: [x, 1.6, z], n: [nx, 0, nz], th, inside, outside, boards: vent ? 0 : 6, vent, zone, behind: null, col, climbT: 0, swipeT: 0 });
   };
   for (const [x, zn] of winDefs.n) addWin(x, -35, 0, 1, zn);
   for (const [x, zn] of winDefs.s) addWin(x, 35, 0, -1, zn);
@@ -631,6 +632,7 @@ function buildLab() {
       else door(c - 1.6, f - 0.45, c + 1.6, f + 0.45, a1, b1, cost);
     }
     if (ax === 'z') addWin(f, win[0], win[1], 0, 'A', T); else addWin(win[0], f, 0, win[2], 'A', T);
+    W.windows[W.windows.length - 1].behind = doors[0][2]; // zombies stand in this (still closed) zone before breaking in
   }
   // closed corner blocks (collapsed wings)
   Bc(27, 22.5, 26, 23, 4.0, [0.30, 0.29, 0.27]);
