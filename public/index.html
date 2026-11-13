@@ -2182,33 +2182,38 @@ function doMelee(p) {
 }
 // ---------- aim assist (BO2 style: ADS snap + slowdown) ----------
 function aimAssistOn(a) { return SET.aa === 'all' || (SET.aa === 'pad' && a.pad); }
-function aaTargets(p, maxAng, maxDist) {
-  const e = eyePos(p), f = fwdVec(p.camYaw, p.camPitch); let best = null, ba = maxAng;
+// distance window where aim assist works at all (no help point-blank or far away)
+function aaRange(d) { return { min: 3, max: d.cls === 'sniper' ? 55 : d.cls === 'ar' || d.cls === 'lmg' ? 35 : 22 }; }
+function aaTargets(p, maxAng) {
+  const e = eyePos(p), f = fwdVec(p.camYaw, p.camPitch), R = aaRange(curW(p).d); let best = null, ba = maxAng;
   for (const b of G.ents) {
     if (b === p || !b.alive || !isEnemy(p, b)) continue;
     const c = [b.pos[0], b.pos[1] + (b.isPlayer ? b.h * 0.7 : 1.25), b.pos[2]], dv = V.sub(c, e), dist = V.len(dv);
-    if (dist > maxDist) continue;
-    const ang = Math.acos(clamp(V.dot(V.norm(dv), f), -1, 1));
-    if (ang < ba && losClear(e, c)) { ba = ang; best = { ent: b, ang, dist }; }
+    if (dist < R.min || dist > R.max) continue;
+    // horizontal angle to the target's center axis only
+    const ha = Math.abs(angDiff(p.camYaw, Math.atan2(-dv[0], -dv[2]))), va = Math.abs(Math.asin(clamp(dv[1] / dist, -1, 1)) - p.camPitch);
+    if (va > maxAng * 2.5) continue;
+    if (ha < ba && losClear(e, c)) { ba = ha; best = { ent: b, ang: ha, dist }; }
   }
   return best;
 }
 function aimSlowdown(p) {
-  if (!G._aaT || G.time - G._aaT > 0.1) { G._aaT = G.time; G._aaHit = aaTargets(p, 4 * DEG, 90); }
-  return G._aaHit ? 0.45 : 1;
+  if (!G._aaT || G.time - G._aaT > 0.1) { G._aaT = G.time; G._aaHit = aaTargets(p, 2.5 * DEG); }
+  return G._aaHit ? 0.75 : 1;
 }
 function aimSnapStart(p) {
   const d = curW(p).d;
-  const t = aaTargets(p, (d.cls === 'sniper' ? 10 : 7) * DEG, d.cls === 'sniper' ? 75 : 45);
-  p.snap = t ? { ent: t.ent } : null;
+  const t = aaTargets(p, (d.cls === 'sniper' ? 5 : 4) * DEG);
+  if (!t) { p.snap = null; return; }
+  const e = eyePos(p), ty = Math.atan2(-(t.ent.pos[0] - e[0]), -(t.ent.pos[2] - e[2]));
+  p.snap = { ent: t.ent, off: angDiff(p.yaw, ty) * 0.35, done: 0, a0: p.ads };
 }
+// gentle pull: only sideways toward the target's center axis (never changes aim height), ~35% of the gap
 function aimSnapUpdate(p, dt, adsWas) {
   const t = p.snap.ent;
-  if (!t.alive || p.ads >= 1) { if (p.ads >= 1) p.snap = null; return; }
-  const c = [t.pos[0], t.pos[1] + (t.isPlayer ? t.h * 0.75 : 1.28), t.pos[2]];
-  const [ty, tp] = yawPitchOf(V.norm(V.sub(c, eyePos(p))));
-  const k = clamp((p.ads - adsWas) / Math.max(0.0001, 1 - adsWas), 0, 1);
-  p.yaw += angDiff(p.yaw, ty) * k; p.pitch += (tp - p.pitch) * k;
+  if (!t.alive) { p.snap = null; return; }
+  const S = p.snap, prog = clamp((p.ads - S.a0) / Math.max(0.0001, 1 - S.a0), 0, 1), step = S.off * prog - S.done;
+  p.yaw += step; S.done += step; if (prog >= 1) p.snap = null;
 }
 function alertBots(src, d, sup) {
   const r = sup ? 12 : d.kind === 'sniper' ? 75 : 55;
