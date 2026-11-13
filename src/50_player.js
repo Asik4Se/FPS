@@ -29,7 +29,12 @@ function equipClass(p) {
     : G.mode === 'zombies' ? Object.assign({}, DEFAULT_CLASS, { perks: [[], [], []], wild: [], lethal: 'frag', tactical: 'none', att: [], satt: [] }) : CLS;
   const c = ACTIVE;
   p.wpn = [makeInst(c.primary, c.att, c.pcamo)];
-  if (c.secondary) p.wpn.push(makeInst(c.secondary, c.satt, c.scamo));
+  if (c.secondary) {
+    const dual = (c.wild || []).includes('dual') && canDual(c.secondary);
+    const sw = makeInst(c.secondary, dual ? [] : c.satt, c.scamo);
+    if (dual) { sw.dual = true; sw.magMax *= 2; sw.mag = sw.magMax; sw.res *= 2; }
+    p.wpn.push(sw);
+  }
   p.cur = 0; p.zoomLv = 1;
   p.lethals = lethalMax(); p.tacticals = tacMax();
   if (G.mode === 'gun') ggEquip(p);
@@ -96,6 +101,7 @@ function updatePlayer(p, a, dt) {
     return;
   }
   const w = curW(p), d = w.d;
+  if (w.dual) { p.dualL = !!a.ads; p.dualLP = p.dualL && !p._dualPrev; p._dualPrev = p.dualL; a.ads = false; } else { p.dualL = p.dualLP = false; p._dualPrev = false; }
   // ---------- look (raw, no smoothing) ----------
   const tanBase = Math.tan(SET.fov * DEG / 2), ratio = Math.tan(p.fov * DEG / 2) / tanBase;
   const adsScale = p.ads > 0.5 ? ratio * SET.adsSens : ratio;
@@ -306,7 +312,7 @@ function updatePlayer(p, a, dt) {
   if ((a.reloadP || autoRel) && W2.reloadT <= 0 && W2.mag < W2.magMax && W2.res > 0 && !busy) {
     if (D2.shell) { W2.shellMode = true; W2.reloadTot = W2.reloadT = (D2.shell + 0.25) * (zmHas('speed') ? 0.5 : 1); }
     else {
-      W2.reloadTot = W2.reloadT = (W2.mag === 0 ? D2.reloadEmpty : D2.reload) * (W2.att.has('fm') ? 0.65 : 1) * (zmHas('speed') ? 0.5 : 1);
+      W2.reloadTot = W2.reloadT = (W2.mag === 0 ? D2.reloadEmpty : D2.reload) * (W2.att.has('fm') ? 0.65 : 1) * (zmHas('speed') ? 0.5 : 1) * (W2.dual ? 1.35 : 1);
       W2.reloadFillAt = W2.reloadTot * 0.2;
     }
     sfxClick(700, 0.2, 0.06);
@@ -352,6 +358,19 @@ function updatePlayer(p, a, dt) {
     } else if (a.fireP) { sfxClick(3000, 0.2, 0.03); p.fireBuf = 0; }
   }
 
+  // ---------- dual wield: the left gun has its own trigger and timer ----------
+  if (W2.dual) {
+    W2.shotT2 = Math.max(0, (W2.shotT2 || 0) - dt);
+    if (p.dualLP) p.fireBufL = 0.16; p.fireBufL = Math.max(0, (p.fireBufL || 0) - dt);
+    const holdL = D2.auto && p.dualL;
+    if ((p.dualLP || holdL) && p.sprint) stopSprint();
+    const canL = p.proneTrans <= 0 && p.crawl < 0.5 && W2.shotT2 <= 0 && W2.reloadT <= 0 && !busy && !p.sprint && p.sprintOutT <= 0 && p.throwT <= 0.3;
+    if (W2.burstL > 0) { if (W2.shotT2 <= 0 && W2.mag > 0 && !busy) { playerShoot(p, W2, 'L'); W2.burstL--; W2.shotT2 = W2.burstL > 0 ? D2.rof : D2.burstDelay; } if (W2.mag <= 0) W2.burstL = 0; }
+    else if ((p.fireBufL > 0 || holdL) && canL) {
+      if (W2.mag > 0) { p.fireBufL = 0; if (D2.burst) { W2.burstL = D2.burst - 1; playerShoot(p, W2, 'L'); W2.shotT2 = D2.rof; } else { playerShoot(p, W2, 'L'); W2.shotT2 = D2.rof * (zmHas('dtap') ? 0.75 : 1); } }
+      else if (p.dualLP) { sfxClick(3000, 0.2, 0.03); p.fireBufL = 0; }
+    }
+  }
   if (W2.temp && W2.mag <= 0 && W2.shotT <= 0) { p.wpn = p.wpn.filter(x => x !== W2); p.cur = 0; p.swapT = p.swapTot = 0.4; }
   // ---------- recoil / flinch recovery ----------
   p.recoilP = approach(p.recoilP, 0, dt * D2.center * Math.max(1, p.recoilP * 0.6));
@@ -417,14 +436,15 @@ function hipSpread(p, w) {
   else s = lerp(d.hip * (w.att.has('laser') ? 0.6 : 1), d.adsSpread, p.ads);
   return s * (moving ? 1.25 : 1) * (p.onGround ? 1 : hasPerk('dex') ? 1.15 : 1.7) * (p.stance === 'crouch' ? 0.85 : p.stance === 'prone' ? 0.7 : 1);
 }
-function playerShoot(p, w) {
+function playerShoot(p, w, side) {
   const d = w.d; w.mag--;
   if (d.bolt) { w.boltT = d.rof; setTimeout(sfxBolt, 120); }
   if (d.pump) { p.pumpT = d.rof; setTimeout(sfxPump, 150); }
-  const sup = w.att.has('sup');
-  p.muzzleT = G.time; p.lastShotT = G.time; p.firedT = G.time; p.firedSup = sup;
-  sfxShot(d.kind, 0, 0, sup);
-  const spread = hipSpread(p, w);
+  const sup = w.att.has('sup'), L = side === 'L';
+  if (L) { p.muzzleL = G.time; p.lastShotL = G.time; } else { p.muzzleT = G.time; p.lastShotT = G.time; }
+  p.firedT = G.time; p.firedSup = sup;
+  sfxShot(d.kind, 0, L ? -0.25 : w.dual ? 0.25 : 0, sup);
+  const spread = hipSpread(p, w) * (w.dual ? 1.15 : 1);
   const f = fwdVec(p.camYaw, p.camPitch);
   const qsTime = G.time - p.adsStart, adsAtShot = p.ads;
   if (G.mode === 'zombies') zqShot(eyePos(p), f);
@@ -445,7 +465,7 @@ function playerShoot(p, w) {
     const res = fireBullet(p, eyePos(p), dir, d, d.pellets ? 60 : 300, w.att, (w.dmgMul || 1) * (zmHas('dtap') ? 2 : 1));
     if (res.ent) anyHit = res; last = res;
     if (i < 3 || !d.pellets) {
-      const mz = V.add(eyePos(p), V.add(V.mul(f, 0.6), [Math.cos(p.yaw) * 0.12 * (1 - p.ads), -0.1 * (1 - p.ads), -Math.sin(p.yaw) * 0.12 * (1 - p.ads)]));
+      const sx = (L ? -0.14 : 0.12) * (1 - p.ads), mz = V.add(eyePos(p), V.add(V.mul(f, 0.6), [Math.cos(p.yaw) * sx, -0.1 * (1 - p.ads), -Math.sin(p.yaw) * sx]));
       G.tracers.push({ a: mz, b: res.point, t: 0, life: d.cls === 'sniper' ? 0.12 : 0.05, col: G.zm && w.elem ? ELEMS[w.elem].col : null });
     }
   }

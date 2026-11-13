@@ -17,6 +17,8 @@ const ZDMG = {
   p9: [85, 3], b23: [100, 3],
   // mystery-box exclusives hit much harder
   rpd: [420, 3], ksg: [300, 1.8], python: [1400, 3],
+  l96: [1300, 4], m200: [1500, 4], mtar: [210, 3], t95: [190, 3], sig556: [225, 3], fal: [340, 3], scarh: [270, 3], smr: [360, 3.2],
+  vector: [140, 3], evo: [120, 3], qcw: [170, 3], saiga: [120, 1.5], mk48: [310, 2.5], qbb: [240, 2.5], m1911: [120, 3], g18: [85, 3], deagle: [280, 3.2],
 };
 const ZDMG_CLS = { sniper: [700, 3.5], ar: [200, 3], lmg: [210, 2.5], smg: [140, 3], sg: [180, 1.5], pistol: [85, 3] };
 function zmWeaponDamage(d, zone, dist, att) {

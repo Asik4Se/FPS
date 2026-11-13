@@ -464,6 +464,13 @@ function drawViewmodel(p) {
   if (w.reloadT > 0 && (w.shellMode || w.reloadT < w.reloadTot * 0.85)) { const k = w.shellMode ? 0.5 + 0.5 * Math.sin(w.reloadT / w.reloadTot * Math.PI) : Math.sin((1 - w.reloadT / w.reloadTot) * Math.PI); lh = [lh[0] - 0.05 * k, lh[1] - 0.12 * k, lh[2] + 0.18 * k]; }
   if (d.cls !== 'pistol' && d.cls !== 'knife') { seg(_b, lh, [-0.24, -0.32, 0.25], 0.075, sleeve); part(_b, lh, [0.065, 0.06, 0.08], glove); }
   if (t - p.muzzleT < 0.05 && !w.att.has('sup')) { part(_b, muzzle, [0.09, 0.09, 0.14], [1, 0.85, 0.5], 1); part(_b, V.add(muzzle, [0, 0, -0.05]), [0.18, 0.04, 0.04], [1, 0.75, 0.4], 1); }
+  if (w.dual) { // left-hand pistol, mirrored, with its own recoil and flash
+    const sl = t - (p.lastShotL || -9), kl = sl < 0.25 ? Math.exp(-sl * 18) * 0.35 : 0;
+    M4.ident(_b); M4.tr(_b, -pos[0] - 0.02, pos[1], pos[2] + 0.06 * kl); M4.ry(_b, -ry); M4.rx(_b, rx + 0.12 * kl - (sinceShot < 0.25 ? 0.12 * Math.exp(-sinceShot * 18) * 0.35 : 0)); M4.rz(_b, -rz); M4.sc(_b, VW, VW, 1);
+    VMW = w; const r2 = drawGunModel(_b, w, d, p); VMW = null;
+    seg(_b, [-0.01, -0.05, 0.12], [-0.16, -0.32, 0.55], 0.075, sleeve); part(_b, [0.0, -0.06, 0.11], [0.06, 0.07, 0.08], glove);
+    if (t - (p.muzzleL || -9) < 0.05) { part(_b, r2.muzzle, [0.09, 0.09, 0.14], [1, 0.85, 0.5], 1); part(_b, V.add(r2.muzzle, [0, 0, -0.05]), [0.18, 0.04, 0.04], [1, 0.75, 0.4], 1); }
+  }
   if (VMGLASS.length) { // translucent lens, drawn last
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
     for (const g of VMGLASS) { M4.copy(_m, g.base); M4.tr(_m, ...g.c); M4.sc(_m, ...g.s); drawCube(_m, g.col, 0.6, 0.12); }

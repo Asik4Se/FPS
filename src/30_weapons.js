@@ -101,8 +101,79 @@ WPN.arc = { name: 'アークスロワー', cls: 'wonder', kind: 'plasma', desc: 
 WPN.grav = { name: 'グラビティキャノン', cls: 'wonder', kind: 'sg', desc: 'ボックス限定の試作兵器。前方の空間ごと押し潰す重力波でゾンビの群れを吹き飛ばす。', dmg: 0, mult: M_FLAT, special: 'grav', rof: 1.0, mag: 2, res: 12, reload: 3.4, reloadEmpty: 3.4,
   ads: 0.3, sprintOut: 0.25, mob: 0.9, hip: 1.5, adsSpread: 0.5, zoom: 56, sway: 0.1, stanceSway: true, recoil: 6.0, center: 6, swap: 0.7, model: 'grav', pen: 0, stats: {} };
 const ZBOX_ONLY = ['rpd', 'ksg', 'python', 'm32'], ZWONDER = ['arc', 'grav', 'plasma'];
-const PRIMARIES = ['vx50', 'bls7', 'as50x', 'dr90', 'svu', 'ar94', 'm8', 'sw56', 'sm7', 'msc', 'pd50', 'r870', 'sg12', 'ls60'];
-const SECONDARIES = ['p9', 'b23', 'ex9'];
+// ---------- additional weapons ----------
+Object.assign(WPN, {
+  l96: { name: 'L96A1', cls: 'sniper', kind: 'sniper', desc: 'ボルトアクション。揺れが小さく扱いやすい。頭・胴上部で一撃。',
+    dmg: 92, mult: mm({ head: 1.5, neck: 1.15, upper: 1.15 }), bolt: true, rof: 1.25, mag: 5, res: 30, reload: 3.0, reloadEmpty: 3.8,
+    ads: 0.38, sprintOut: 0.27, mob: 0.95, hip: 8.8, zoom: 12.5, sway: 0.7, stanceSway: true, recoil: 3.9, center: 9, swap: 0.72, model: 'bolt', pen: 0.95,
+    stats: { dmg: 90, rng: 90, acc: 82, rof: 8, mob: 45 } },
+  m200: { name: 'M200', cls: 'sniper', kind: 'sniper', desc: '超長距離ボルトアクション。足以外は一撃だがADSと連射が最も遅い。',
+    dmg: 100, mult: mm({ head: 1.5, neck: 1.1, upper: 1.1, lower: 1.1, arm: 1.1 }), bolt: true, rof: 1.65, mag: 7, res: 35, reload: 3.6, reloadEmpty: 4.6,
+    ads: 0.43, sprintOut: 0.32, mob: 0.93, hip: 9.5, zoom: 11, sway: 0.95, stanceSway: true, recoil: 4.6, center: 8, swap: 0.8, model: 'bolt', pen: 1.1,
+    stats: { dmg: 100, rng: 100, acc: 78, rof: 3, mob: 35 } },
+  mtar: { name: 'MTAR-21', cls: 'ar', kind: 'ar', desc: 'ブルパップの万能AR。反動が素直で中距離まで安定。',
+    dmg: 33, dmgMin: 25, r0: 22, r1: 42, mult: mm({ head: 1.4 }), auto: true, rof: 0.075, mag: 30, res: 150, reload: 2.4, reloadEmpty: 3.0,
+    ads: 0.24, sprintOut: 0.2, mob: 1.0, hip: 3.4, adsSpread: 0.15, zoom: 53, sway: 0.14, stanceSway: true, recoil: 0.55, center: 5, swap: 0.55, model: 'bullpup', pen: 0.3,
+    stats: { dmg: 55, rng: 55, acc: 68, rof: 74, mob: 72 } },
+  t95: { name: 'Type 95', cls: 'ar', kind: 'ar', desc: 'ARで最速クラスの連射。近距離の撃ち合いに強いが反動大。',
+    dmg: 30, dmgMin: 20, r0: 18, r1: 35, mult: mm({ head: 1.4 }), auto: true, rof: 0.064, mag: 30, res: 150, reload: 2.3, reloadEmpty: 2.9,
+    ads: 0.23, sprintOut: 0.19, mob: 1.0, hip: 3.2, adsSpread: 0.22, zoom: 54, sway: 0.15, stanceSway: true, recoil: 0.8, center: 4, swap: 0.5, model: 'bullpup', pen: 0.3,
+    stats: { dmg: 50, rng: 45, acc: 52, rof: 88, mob: 74 } },
+  sig556: { name: 'SIG 556', cls: 'ar', kind: 'ar', desc: '3点バースト。1バーストで近距離キル、遠距離でもまとまる。',
+    dmg: 35, dmgMin: 25, r0: 28, r1: 50, mult: mm({ head: 1.4 }), burst: 3, burstDelay: 0.2, rof: 0.055, mag: 30, res: 150, reload: 2.2, reloadEmpty: 2.8,
+    ads: 0.25, sprintOut: 0.2, mob: 1.0, hip: 3.4, adsSpread: 0.1, zoom: 52, sway: 0.12, stanceSway: true, recoil: 0.35, center: 6, swap: 0.55, model: 'burst', pen: 0.35,
+    stats: { dmg: 58, rng: 68, acc: 82, rof: 58, mob: 70 } },
+  fal: { name: 'FN FAL', cls: 'ar', kind: 'ar', desc: 'セミオートの7.62mm。2〜3発で倒せるが連打が必要。',
+    dmg: 50, dmgMin: 40, r0: 40, r1: 70, mult: mm({ head: 1.4 }), rof: 0.12, mag: 20, res: 120, reload: 2.4, reloadEmpty: 3.0,
+    ads: 0.26, sprintOut: 0.21, mob: 0.98, hip: 3.8, adsSpread: 0.05, zoom: 50, sway: 0.15, stanceSway: true, recoil: 1.6, center: 7, swap: 0.6, model: 'rifle', pen: 0.5,
+    stats: { dmg: 80, rng: 78, acc: 75, rof: 35, mob: 66 } },
+  scarh: { name: 'SCAR-H', cls: 'ar', kind: 'ar', desc: '高威力フルオート。連射は遅めだが3〜4発キル。',
+    dmg: 40, dmgMin: 30, r0: 30, r1: 50, mult: mm({ head: 1.4 }), auto: true, rof: 0.1, mag: 20, res: 120, reload: 2.5, reloadEmpty: 3.1,
+    ads: 0.26, sprintOut: 0.21, mob: 0.98, hip: 3.6, adsSpread: 0.15, zoom: 52, sway: 0.15, stanceSway: true, recoil: 0.95, center: 5, swap: 0.6, model: 'rifle2', pen: 0.45,
+    stats: { dmg: 68, rng: 65, acc: 60, rof: 55, mob: 66 } },
+  smr: { name: 'SIG 716', cls: 'ar', kind: 'ar', desc: 'セミオートのマークスマン。頭なら2発、射程が非常に長い。',
+    dmg: 50, dmgMin: 35, r0: 45, r1: 80, mult: mm({ head: 1.6, neck: 1.2 }), rof: 0.15, mag: 20, res: 100, reload: 2.6, reloadEmpty: 3.2,
+    ads: 0.28, sprintOut: 0.22, mob: 0.97, hip: 4.2, adsSpread: 0.05, zoom: 46, sway: 0.18, stanceSway: true, recoil: 1.35, center: 7, swap: 0.62, model: 'dmr', pen: 0.55,
+    stats: { dmg: 82, rng: 88, acc: 80, rof: 30, mob: 62 } },
+  vector: { name: 'Vector', cls: 'smg', kind: 'smg', desc: '超高レートで反動が極小。弾切れが早い。',
+    dmg: 30, dmgMin: 18, r0: 10, r1: 22, mult: mm({ head: 1.3 }), auto: true, rof: 0.052, mag: 30, res: 150, reload: 2.0, reloadEmpty: 2.4,
+    ads: 0.2, sprintOut: 0.15, mob: 1.0, hip: 2.6, adsSpread: 0.3, zoom: 56, sway: 0.12, stanceSway: true, recoil: 0.32, center: 6, swap: 0.5, model: 'smgc', pen: 0.15,
+    stats: { dmg: 42, rng: 25, acc: 70, rof: 95, mob: 90 } },
+  evo: { name: 'Scorpion EVO', cls: 'smg', kind: 'smg', desc: '最速クラスの連射。至近距離なら一瞬で溶かせるが減衰が激しい。',
+    dmg: 25, dmgMin: 16, r0: 9, r1: 20, mult: mm({ head: 1.3 }), auto: true, rof: 0.05, mag: 32, res: 160, reload: 2.1, reloadEmpty: 2.5,
+    ads: 0.19, sprintOut: 0.14, mob: 1.02, hip: 2.4, adsSpread: 0.45, zoom: 57, sway: 0.12, stanceSway: true, recoil: 0.55, center: 5, swap: 0.45, model: 'smg', pen: 0.15,
+    stats: { dmg: 36, rng: 22, acc: 50, rof: 98, mob: 95 } },
+  qcw: { name: 'QCW-05', cls: 'smg', kind: 'smg', desc: '3点バーストSMG。中距離まで届くが連打が必要。',
+    dmg: 35, dmgMin: 22, r0: 15, r1: 30, mult: mm({ head: 1.3 }), burst: 3, burstDelay: 0.17, rof: 0.055, mag: 36, res: 180, reload: 2.2, reloadEmpty: 2.7,
+    ads: 0.21, sprintOut: 0.15, mob: 1.0, hip: 2.8, adsSpread: 0.25, zoom: 55, sway: 0.12, stanceSway: true, recoil: 0.4, center: 7, swap: 0.5, model: 'smg', pen: 0.2,
+    stats: { dmg: 50, rng: 40, acc: 72, rof: 62, mob: 88 } },
+  saiga: { name: 'Saiga-12', cls: 'sg', kind: 'sg', desc: 'マガジン式セミオートショットガン。連射で押し込める。',
+    dmg: 18, dmgMin: 5, r0: 5, r1: 12, mult: M_FLAT, pellets: 6, pelSpread: 4.8, rof: 0.22, mag: 8, res: 40, reload: 2.6, reloadEmpty: 3.2,
+    ads: 0.25, sprintOut: 0.2, mob: 1.0, hip: 5, adsSpread: 3.6, zoom: 58, sway: 0.1, stanceSway: true, recoil: 2.8, center: 12, swap: 0.6, model: 'autosg', pen: 0,
+    stats: { dmg: 62, rng: 12, acc: 38, rof: 52, mob: 85 } },
+  mk48: { name: 'Mk 48', cls: 'lmg', kind: 'ar', desc: '7.62mmの重機関銃。威力最強クラスだがADSと持ち替えが遅い。',
+    dmg: 50, dmgMin: 40, r0: 30, r1: 60, mult: mm({ head: 1.4 }), auto: true, rof: 0.085, mag: 100, res: 300, reload: 7.5, reloadEmpty: 8.0,
+    ads: 0.45, sprintOut: 0.32, mob: 0.83, hip: 4.6, adsSpread: 0.22, zoom: 50, sway: 0.22, stanceSway: true, recoil: 0.9, center: 4, swap: 0.85, model: 'lmg', pen: 0.7,
+    stats: { dmg: 80, rng: 75, acc: 55, rof: 70, mob: 30 } },
+  qbb: { name: 'QBB-95', cls: 'lmg', kind: 'ar', desc: '軽量LMG。ADSが速くARに近い感覚で使える。',
+    dmg: 40, dmgMin: 30, r0: 25, r1: 50, mult: mm({ head: 1.4 }), auto: true, rof: 0.07, mag: 75, res: 225, reload: 5.5, reloadEmpty: 6.0,
+    ads: 0.34, sprintOut: 0.26, mob: 0.88, hip: 4.0, adsSpread: 0.2, zoom: 51, sway: 0.18, stanceSway: true, recoil: 0.65, center: 4, swap: 0.7, model: 'lmg', pen: 0.5,
+    stats: { dmg: 65, rng: 62, acc: 62, rof: 80, mob: 48 } },
+  m1911: { name: 'M1911', cls: 'pistol', kind: 'pistol', desc: '.45口径のセミオート。1発が重いが装弾数は少ない。',
+    dmg: 42, dmgMin: 25, r0: 10, r1: 22, mult: mm({ head: 1.4 }), rof: 0.14, mag: 8, res: 40, reload: 1.7, reloadEmpty: 2.0,
+    ads: 0.15, sprintOut: 0.12, mob: 1.0, hip: 2.6, adsSpread: 0.2, zoom: 58, sway: 0.1, stanceSway: true, recoil: 1.7, center: 9, swap: 0.35, model: 'pistol', pen: 0.15,
+    stats: { dmg: 55, rng: 22, acc: 55, rof: 35, mob: 100 } },
+  g18: { name: 'Glock 18', cls: 'pistol', kind: 'pistol', desc: 'フルオート拳銃。近距離ならSMG並みの火力。',
+    dmg: 25, dmgMin: 15, r0: 8, r1: 18, mult: mm({ head: 1.3 }), auto: true, rof: 0.055, mag: 20, res: 100, reload: 1.8, reloadEmpty: 2.1,
+    ads: 0.15, sprintOut: 0.12, mob: 1.0, hip: 2.8, adsSpread: 0.35, zoom: 58, sway: 0.1, stanceSway: true, recoil: 0.9, center: 9, swap: 0.35, model: 'bpistol', pen: 0.1,
+    stats: { dmg: 36, rng: 18, acc: 42, rof: 90, mob: 100 } },
+  deagle: { name: 'Desert Eagle', cls: 'pistol', kind: 'pistol', desc: '.50口径の大型拳銃。頭なら一撃、胴でも2発。反動は最大級。',
+    dmg: 60, dmgMin: 40, r0: 12, r1: 28, mult: mm({ head: 1.7 }), rof: 0.28, mag: 7, res: 35, reload: 2.0, reloadEmpty: 2.4,
+    ads: 0.18, sprintOut: 0.13, mob: 0.98, hip: 3.2, adsSpread: 0.15, zoom: 56, sway: 0.12, stanceSway: true, recoil: 3.4, center: 8, swap: 0.4, model: 'revolver', pen: 0.4,
+    stats: { dmg: 85, rng: 30, acc: 55, rof: 20, mob: 95 } },
+});
+const PRIMARIES = ['vx50', 'bls7', 'l96', 'm200', 'as50x', 'dr90', 'svu', 'ar94', 'm8', 'sw56', 'mtar', 't95', 'sig556', 'fal', 'scarh', 'smr', 'sm7', 'msc', 'pd50', 'vector', 'evo', 'qcw', 'r870', 'sg12', 'saiga', 'ls60', 'mk48', 'qbb'];
+const SECONDARIES = ['p9', 'b23', 'm1911', 'g18', 'deagle', 'ex9'];
 const ATT = {
   cpu: { name: '弾道計算機', desc: 'スコープの揺れを大幅に軽減', for: ['sniper'] },
   vz: { name: '可変ズーム', desc: 'スコープ中にホイールで3段階の倍率', for: ['sniper'] },
@@ -133,7 +204,9 @@ const WILDS = [
   { id: 'g3', name: 'パーク3欲張り', desc: 'パーク3をもう1つ' },
   { id: 'dl', name: 'デンジャークローズ', desc: 'リーサルを2個持てる' },
   { id: 'tm', name: 'タクティシャン', desc: 'タクティカルを2個持てる' },
+  { id: 'dual', name: 'デュアルウィールド', desc: 'サブのハンドガンを2丁持ち（アタッチメント不可）。覗き込めない代わりに左クリック＝右手、右クリック＝左手で撃つ' },
 ];
+const canDual = id => !!(id && WPN[id] && WPN[id].cls === 'pistol' && !WPN[id].proj && !WPN[id].special);
 const LETHALS = {
   frag: { name: 'フラグ', desc: '投げて3秒で爆発。G長押しで投げずに時間を調整（クッキング）', n: 1 },
   semtex: { name: 'セムテックス', desc: '当たった場所や敵に張り付き、2.5秒で爆発', n: 1 },
@@ -236,6 +309,7 @@ function sanitizeClass(c, i) {
   c.wild = (c.wild || []).filter(id => WILDS.some(w => w.id === id));
   c.att = (c.att || []).filter(a => ATT[a] && ATT[a].for.includes(WPN[c.primary].cls));
   c.satt = (c.satt || []).filter(a => c.secondary && ATT[a] && ATT[a].for.includes(WPN[c.secondary].cls)).slice(0, (c.wild || []).includes('sgf') ? 2 : 1);
+  if ((c.wild || []).includes('dual') && canDual(c.secondary)) c.satt = []; // dual pistols cannot be customised
   c.att = c.att.slice(0, (c.wild || []).includes('gf') ? 3 : 2);
   if (!CAMO_BY_ID[c.pcamo]) c.pcamo = 'none'; if (!CAMO_BY_ID[c.scamo]) c.scamo = 'none';
   if (!LETHALS[c.lethal]) c.lethal = 'none';

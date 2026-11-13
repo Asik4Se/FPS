@@ -238,7 +238,7 @@ function openCAC() { $('menu').classList.remove('on'); EDIT = CLASSES.cur; CS.sl
 function closeCAC(toPlay) { $('cac').classList.remove('on'); $('menu').classList.add('on'); saveClasses(); saveJSON('ls_streaks', STREAK_SEL); showPanel(ON.code ? 'online' : 'play'); }
 function buildCAC() {
   const c = CLASSES.list[EDIT], cost = classCost(c), hasW = id => c.wild.includes(id);
-  const maxP = hasW('gf') ? 3 : 2, maxS = hasW('sgf') ? 2 : 1;
+  const dualOn = hasW('dual') && canDual(c.secondary), maxP = hasW('gf') ? 3 : 2, maxS = dualOn ? 0 : hasW('sgf') ? 2 : 1;
   const pd = WPN[c.primary], sd = c.secondary ? WPN[c.secondary] : null;
   const can = n => cost + n <= 10;
   const chips = (list, max, slot) => { let h = ''; for (let i = 0; i < max; i++) h += list[i] ? `<span class="${CS.slot === slot ? 'on' : ''}" data-slot="${slot}">${ATT[list[i]].name}</span>` : `<span class="empty" data-slot="${slot}">＋ アタッチメント</span>`; return h; };
@@ -247,7 +247,7 @@ function buildCAC() {
   const perkNames = i => c.perks[i].map(id => PERK_BY_ID[id].name).join(' ＋ ');
   const slots = [
     row('primary', 'メイン武器', pd.name, CLS_JP[pd.cls], chips(c.att, maxP, 'patt') + camoChip('pcamo', 'pcamo')),
-    row('secondary', 'サブ武器', sd ? sd.name : 'なし', sd ? CLS_JP[sd.cls] : '', sd ? chips(c.satt, maxS, 'satt') + camoChip('scamo', 'scamo') : '', !sd),
+    row('secondary', 'サブ武器', sd ? sd.name + (dualOn ? ' ×2' : '') : 'なし', sd ? CLS_JP[sd.cls] + (dualOn ? '・デュアル' : '') : '', sd ? (dualOn ? '<span class="empty">デュアル（カスタム不可）</span>' : chips(c.satt, maxS, 'satt')) + camoChip('scamo', 'scamo') : '', !sd),
     row('lethal', 'リーサル', LETHALS[c.lethal].name, hasW('dl') ? '×2' : '', '', c.lethal === 'none'),
     row('tactical', 'タクティカル', TACTICALS[c.tactical].name, hasW('tm') ? '×2' : '', '', c.tactical === 'none'),
     row('perk0', 'パーク1', perkNames(0) || 'なし', '', '', !c.perks[0].length),
@@ -341,7 +341,7 @@ function buildCAC() {
           if (k === 'sgf') c.satt = c.satt.slice(0, 1);
           if (k === 'ok' && c.secondary && !SECONDARIES.includes(c.secondary)) { c.secondary = 'p9'; c.satt = []; }
           if (/^g[123]$/.test(k)) { const i = +k[1] - 1; c.perks[i] = c.perks[i].slice(0, 1); }
-        } else c.wild.push(k);
+        } else { c.wild.push(k); if (k === 'dual' && canDual(c.secondary)) c.satt = []; }
       } else if (s0 === 'streak') {
         const L = STREAK_SEL.list;
         if (L.includes(k)) { if (L.length > 1) STREAK_SEL.list = L.filter(x => x !== k); } else L.push(k);

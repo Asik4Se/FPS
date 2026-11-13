@@ -37,11 +37,11 @@ const DIFFS = [
   { name: 'ベテラン', react: 0.5, acc: 3.0, turn: 7.0, see: 1.1 },
 ];
 const BOT_W = {
-  ar: { pool: ['ar94', 'm8', 'sw56'], burst: [3, 7], pause: [0.25, 0.6], range: 70, pref: 30 },
-  smg: { pool: ['sm7', 'msc', 'pd50'], burst: [4, 9], pause: [0.2, 0.45], range: 45, pref: 12 },
-  sniper: { pool: ['vx50', 'bls7', 'dr90'], burst: [1, 1], pause: [1.4, 2.0], range: 130, pref: 60 },
-  sg: { pool: ['r870', 'sg12'], burst: [1, 2], pause: [0.5, 0.9], range: 28, pref: 5 },
-  lmg: { pool: ['ls60'], burst: [6, 12], pause: [0.3, 0.6], range: 80, pref: 30 },
+  ar: { pool: ['ar94', 'm8', 'sw56', 'mtar', 't95', 'sig556', 'scarh'], burst: [3, 7], pause: [0.25, 0.6], range: 70, pref: 30 },
+  smg: { pool: ['sm7', 'msc', 'pd50', 'vector', 'evo'], burst: [4, 9], pause: [0.2, 0.45], range: 45, pref: 12 },
+  sniper: { pool: ['vx50', 'bls7', 'dr90', 'l96'], burst: [1, 1], pause: [1.4, 2.0], range: 130, pref: 60 },
+  sg: { pool: ['r870', 'sg12', 'saiga'], burst: [1, 2], pause: [0.5, 0.9], range: 28, pref: 5 },
+  lmg: { pool: ['ls60', 'mk48', 'qbb'], burst: [6, 12], pause: [0.3, 0.6], range: 80, pref: 30 },
   knife: { pool: ['knife'], burst: [1, 1], pause: [0.6, 0.8], range: 40, pref: 1 },
 };
 function newBot(i) {
