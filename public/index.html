@@ -2761,9 +2761,9 @@ function zmSpawnOne(at) {
   else { const pts = []; for (const k in W.zoneSpawn) if (W.zones[k]) pts.push(...W.zoneSpawn[k]); sp = pts.length ? pick(pts) : [0, 20]; }
   const b = makeEnt('ゾンビ', false);
   const r = z.round, roll = Math.random();
-  const sprintP = clamp((r - 4) * 0.13, 0, 0.85), jogP = clamp((r - 2) * 0.25, 0, 1);
+  const sprintP = clamp((r - 5) * 0.11, 0, 0.8), jogP = clamp((r - 2) * 0.22, 0, 1);
   const kind = roll < sprintP ? 'sprint' : roll < sprintP + jogP * (1 - sprintP) ? 'jog' : 'walk';
-  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: kind === 'sprint' ? BASE_SPEED * 1.5 * rand(0.86, 0.93) : { walk: 1.35, jog: 3.3 }[kind] * rand(0.92, 1.08),
+  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: kind === 'sprint' ? BASE_SPEED * 1.5 * rand(0.76, 0.82) : { walk: 1.25, jog: 3.0 }[kind] * rand(0.93, 1.07),
     rise: 0, atkT: 0, walkT: rand(0, 6), maxHp: zmHP(r), yaw: rand(0, 6.28), stance: 'stand', pose: null, pitch: -0.25, skin: pick(ZSKINS), stuckT: 0, lastPos: [0, 0, 0], bob: rand(0, 6) });
   b.vel = [0, 0, 0];
   G.zombies.push(b); G.ents.push(b);
