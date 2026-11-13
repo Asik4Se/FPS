@@ -433,7 +433,7 @@ function playerShoot(p, w) {
     const f2 = coneDir(f, spread * DEG), e0 = V.add(eyePos(p), V.mul(f2, 0.6));
     const sp = d.proj === 'plasma' ? 70 : 42;
     const zr = G.zm ? Math.max(1, G.zm.round) : 1;
-    G.projs.push({ type: d.proj, pos: e0, start: e0.slice(), vel: V.mul(f2, sp), owner: p, team: p.team, t: 0, dmg: d.proj === 'plasma' ? (G.zm ? (w.up ? 5000 : 2200) : (w.up ? 2500 : 1100)) : d === WPN.m32 ? (600 + 260 * zr) * (w.up ? 2 : 1) : 0, def: d === WPN.m32 ? d : null });
+    G.projs.push({ type: d.proj, pos: e0, start: e0.slice(), vel: V.mul(f2, sp), owner: p, team: p.team, t: 0, dmg: d.proj === 'plasma' ? (G.zm ? 2200 * PAP_DMG[papLv(w)] : 1100) : d === WPN.m32 ? (600 + 260 * zr) * PAP_DMG[papLv(w)] : 0, def: d === WPN.m32 ? d : null });
     if (d.proj === 'plasma') sfxPlasma(0);
     p.recoilP += d.recoil; alertBots(p, d, false);
     return;
@@ -446,7 +446,7 @@ function playerShoot(p, w) {
     if (res.ent) anyHit = res; last = res;
     if (i < 3 || !d.pellets) {
       const mz = V.add(eyePos(p), V.add(V.mul(f, 0.6), [Math.cos(p.yaw) * 0.12 * (1 - p.ads), -0.1 * (1 - p.ads), -Math.sin(p.yaw) * 0.12 * (1 - p.ads)]));
-      G.tracers.push({ a: mz, b: res.point, t: 0, life: d.cls === 'sniper' ? 0.12 : 0.05 });
+      G.tracers.push({ a: mz, b: res.point, t: 0, life: d.cls === 'sniper' ? 0.12 : 0.05, col: G.zm && w.elem ? ELEMS[w.elem].col : null });
     }
   }
   if (G.online && last) netShot(V.add(eyePos(p), V.mul(f, 0.6)), last.point, d.kind, sup);

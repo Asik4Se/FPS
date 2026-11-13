@@ -11,6 +11,10 @@ function zqInit() {
   z.lampCol = shuffle([0, 1, 2, 3]); z.code = shuffle([0, 1, 2, 3]); z.codeIdx = 0; z.codeShown = false; z.codeDone = false; z.rewardTaken = false; z.lampFlash = [0, 0, 0, 0];
   z.parts = {}; for (const k of ['shield', 'trap']) z.parts[k] = q.parts[k].map(alts => ({ pos: pick(alts), got: false }));
   z.built = { shield: false, trap: false }; z.shieldCdRound = 0; z.trapHeld = false; z.trap = null; z.repairPts = 0; z.repT = 0;
+  // final chain: keycard (color code) + 3 soul stones + 4 coolant valves -> sealed vault door -> boss
+  z.keycard = false; z.stones = q.stones.map(s => ({ pos: s.pos, zone: s.zone, n: 0, need: 12, done: false }));
+  z.valves = q.valves.map(v => ({ pos: v.pos, zone: v.zone, open: false, ang: 0 })); z.valveT = 0; z.valvesDone = false; z.vaultOpen = false;
+  z.souls = [];
   z.env0 = { amb: R.amb.slice(), sunCol: R.sunCol.slice() };
   R.amb = z.env0.amb.map(v => v * 0.85); R.sunCol = z.env0.sunCol.map(v => v * 0.7);
 }
@@ -32,6 +36,16 @@ function zqNear(P) {
     if (!z.power) return { kind: 'info', text: '端末：電源が入っていない' };
     if (z.codeDone) return { kind: 'info', text: '端末：解除済み' };
     return { kind: 'terminal', text: z.codeShown ? '端末：色の順に信号灯を撃て' : '[F] 端末を調べる' };
+  }
+  for (const v of z.valves) if (d2(v.pos, 1.6)) {
+    if (!z.power) return { kind: 'info', text: '冷却バルブ：電源が入っていない' };
+    if (z.valvesDone) return { kind: 'info', text: '冷却ライン：開通済み' };
+    return v.open ? { kind: 'info', text: `冷却バルブ：開放中（残り ${Math.ceil(z.valveT)} 秒で全部開けろ）` } : { kind: 'valve', v, text: '[F] 冷却バルブを開く — 4つを45秒以内に' };
+  }
+  for (const s of z.stones) if (d2(s.pos, 1.8)) return { kind: 'info', text: !z.power ? '封印石：電源が入っていない' : s.done ? '封印石：充填完了' : `封印石：近くでゾンビを倒して魂を集めろ（${s.n}/${s.need}）` };
+  if (W.bossDoor && !W.bossDoor.open && d2(W.bossDoor.pos, 2.4)) {
+    const st = zqVaultReq(z);
+    return st.ok ? { kind: 'vault', text: '[F] 封鎖扉を開く — 研究体ゼロの収容区画' } : { kind: 'info', text: `封鎖扉：${st.miss.join(' ／ ')}` };
   }
   if (z.codeDone && !z.rewardTaken && d2(q.pedestal, 1.8)) return { kind: 'reward', text: '[F] プラズマピストル改を受け取る' };
   if (d2(q.bench, 2.0)) {
@@ -61,11 +75,18 @@ function zqUse(P, n) {
       z.fuseIn += z.fuses; z.fuses = 0; sfxBeep();
       if (z.fuseIn >= 3) popup(z.power ? '改造台が起動した' : 'ヒューズ完了 — 電源を入れろ', '#d07aff'); else popup(`ヒューズ ${z.fuseIn}/3`, '#ffd24a');
       break;
+    case 'valve':
+      if (!z.valves.some(v => v.open)) z.valveT = 45;
+      n.v.open = true; sfxThud(); sfxBeep(400, 0.2);
+      if (z.valves.every(v => v.open)) { z.valvesDone = true; popup('冷却ライン開通', '#9fe0ff'); sfxUAV(); }
+      else popup(`冷却バルブ ${z.valves.filter(v => v.open).length}/4（残り ${Math.ceil(z.valveT)} 秒）`, '#9fe0ff');
+      break;
+    case 'vault': zbOpenVault(); break;
     case 'part': n.pt.got = true; sfxCloth(); popup(`${ZPART_NAME[n.k]}の部品 ${zqPartCount(n.k)}/3`, '#9fd7ff'); break;
     case 'terminal': if (!z.codeShown) { z.codeShown = true; sfxBeep(); popup('暗号を入手：画面の色の順に信号灯を撃て', '#9fe0ff'); } break;
     case 'reward': {
       z.rewardTaken = true; zmGive(P, 'plasma'); const w = curW(P);
-      w.up = true; w.dmgMul = 2; w.magMax = Math.round(w.magMax * 1.5); w.mag = w.magMax; w.res = w.d.res * 2; w.camo = CAMO_BY_ID.cyber;
+      papUpgrade(w);
       popup('プラズマピストル改 を入手', '#d07aff'); sfxUAV(); break;
     }
     case 'build': z.built[n.k] = true; sfxPump(); setTimeout(sfxBuy, 300); popup(`${ZPART_NAME[n.k]} 完成`, '#9fe0ff'); break;
@@ -99,7 +120,7 @@ function zqShot(eye, dir) {
   if (z.lampFlash[best] > 0) return;
   if (col === z.code[z.codeIdx]) {
     z.codeIdx++; z.lampFlash[best] = 1; sfxBeep();
-    if (z.codeIdx >= 4) { z.codeDone = true; popup('暗号解除 — エントランスの台座を調べろ', '#d07aff'); sfxUAV(); }
+    if (z.codeIdx >= 4) { z.codeDone = true; z.keycard = true; popup('暗号解除 — 台座に報酬、管理者キーカードを入手', '#d07aff'); sfxUAV(); }
   } else {
     z.codeIdx = 0; z.lampFlash = [0, 0, 0, 0]; sfxDeny(); popup('暗号が違う…ゾンビが押し寄せる', '#ff3a2a');
     for (let i = 0; i < 4; i++) zmSpawnOne();
@@ -161,9 +182,36 @@ function zmHitPlayer(P, b, dmg) {
   P.hp -= dmg; P.lastDmgT = G.time; P.flinchP += 2; P.dmgDirs.push({ from: b.pos.slice(), t: G.time }); sfxHurt();
   if (P.hp <= 0) zmPlayerDown(P);
 }
+function zqVaultReq(z) {
+  const miss = [];
+  if (!z.power) miss.push('電源');
+  if (!z.keycard) miss.push('管理者キーカード（暗号）');
+  const sd = z.stones.filter(s => s.done).length; if (sd < 3) miss.push(`封印石 ${sd}/3`);
+  if (!z.valvesDone) miss.push('冷却ライン（バルブ4つ）');
+  return { ok: !miss.length, miss };
+}
+// a zombie died: feed the nearest soul stone
+function zqOnZombieDeath(e) {
+  const z = G.zm; if (!z || !z.stones || !z.power || e.isBoss) return;
+  for (const s of z.stones) {
+    if (s.done || V.dist(e.pos, s.pos) > 6.5) continue;
+    z.souls.push({ a: [e.pos[0], e.pos[1] + 1.2, e.pos[2]], s, t: 0 });
+    break;
+  }
+}
 function zqUpdate(dt) {
   zwUpdateCorpses(dt);
   const z = G.zm; if (!z || !z.parts) return;
+  if (z.valveT > 0 && !z.valvesDone) {
+    z.valveT -= dt;
+    if (z.valveT <= 0) { for (const v of z.valves) v.open = false; popup('冷却圧が戻った…バルブが閉じた', '#ff6a5a'); sfxDeny(); for (let i = 0; i < 3; i++) zmSpawnOne(); }
+  }
+  for (const v of z.valves) v.ang = approach(v.ang, v.open ? Math.PI * 2 : 0, dt * 6);
+  for (const so of z.souls) {
+    so.t += dt * 1.6;
+    if (so.t >= 1 && !so.done) { so.done = true; const s = so.s; if (!s.done) { s.n++; sfxBeep(900 + s.n * 40, 0.08); if (s.n >= s.need) { s.done = true; popup(`封印石 充填完了（${z.stones.filter(x => x.done).length}/3）`, '#c79aff'); sfxUAV(); } } }
+  }
+  z.souls = z.souls.filter(s => !s.done);
   for (let i = 0; i < 4; i++) if (z.lampFlash[i] > 0 && !z.codeDone) z.lampFlash[i] = Math.max(0.3, z.lampFlash[i] - dt);
   const t = z.trap;
   if (t) {
@@ -176,7 +224,7 @@ function zqUpdate(dt) {
           if (!b.alive || b.rise < 1 || b.win || n >= 3) continue;
           if (Math.hypot(b.pos[0] - t.pos[0], b.pos[2] - t.pos[2]) > 4.5) continue;
           n++; G.tracers.push({ a: [t.pos[0], t.pos[1] + 0.9, t.pos[2]], b: [b.pos[0], b.pos[1] + 1.1, b.pos[2]], t: 0, life: 0.15, zap: 1 });
-          zmOnDamage(b, b.hp + 10, null, null, 'explosive');
+          zmOnDamage(b, b.isBoss ? 1500 : b.hp + 10, null, null, 'explosive');
         }
         if (n) sfxPlasma(0.5);
       }
@@ -201,6 +249,22 @@ function zqDraw(t) {
     if (k === 'shield') box([pt.pos[0], pt.pos[1] + bob, pt.pos[2]], [0.5, 0.06, 0.38], [0.45, 0.6, 0.8], 0.5, t);
     else { box([pt.pos[0], pt.pos[1] + bob, pt.pos[2]], [0.2, 0.32, 0.2], [0.75, 0.45, 0.2], 0.5, t); box([pt.pos[0], pt.pos[1] + 0.2 + bob, pt.pos[2]], [0.26, 0.05, 0.26], [0.5, 0.8, 1], 0.9, t); }
   }
+  // soul stones
+  for (const s of z.stones) {
+    const p = s.pos, k = s.n / s.need;
+    box([p[0], 0.95 + Math.sin(t * 2 + p[0]) * 0.06, p[2]], [0.34, 0.5, 0.34], s.done ? [0.85, 0.5, 1] : [0.35, 0.25, 0.5], !z.power ? 0.05 : s.done ? 1 : 0.2 + k * 0.7, t * 0.7);
+    if (z.power && !s.done) for (let i = 0; i < 6; i++) { const a = t * 1.5 + i * 1.047; box([p[0] + Math.cos(a) * 6.5, 0.05, p[2] + Math.sin(a) * 6.5], [0.5, 0.03, 0.1], [0.6, 0.35, 0.9], 0.6, -a); }
+  }
+  for (const so of z.souls) { const e = so.s.pos, k = so.t, pp = [lerp(so.a[0], e[0], k), lerp(so.a[1], 1.0, k) + Math.sin(k * Math.PI) * 1.2, lerp(so.a[2], e[2], k)]; box(pp, [0.16, 0.16, 0.16], [0.8, 0.55, 1], 1, t * 5); }
+  // coolant valves
+  for (const v of z.valves) {
+    const p = v.pos; box([p[0], 1.25, p[2]], [0.08, 0.08, 0.5], [0.3, 0.3, 0.32]);
+    M4.ident(_m); M4.tr(_m, p[0], 1.25, p[2] - 0.28); M4.rz(_m, v.ang); M4.sc(_m, 0.55, 0.06, 0.06); drawCube(_m, v.open ? [0.2, 0.9, 0.4] : [0.85, 0.2, 0.15], 0.5);
+    M4.ident(_m); M4.tr(_m, p[0], 1.25, p[2] - 0.28); M4.rz(_m, v.ang + Math.PI / 2); M4.sc(_m, 0.55, 0.06, 0.06); drawCube(_m, v.open ? [0.2, 0.9, 0.4] : [0.85, 0.2, 0.15], 0.5);
+    box([p[0], 1.62, p[2]], [0.14, 0.1, 0.14], z.valvesDone || v.open ? [0.2, 1, 0.4] : [1, 0.25, 0.15], z.power ? 1 : 0.1);
+  }
+  // sealed vault door runes
+  if (W.bossDoor && !W.bossDoor.open) { const st = zqVaultReq(z), n = 4 - st.miss.length; for (let i = 0; i < 4; i++) box([-13.45, 1.2 + i * 0.5, -22], [0.04, 0.3, 1.6], i < n ? [0.75, 0.4, 1] : [0.2, 0.15, 0.25], i < n ? 0.9 : 0.1); }
   // power switch
   const ps = q.power; box([ps[0], ps[1] + 0.2, ps[2] - 0.35], [0.12, 0.5, 0.12], z.power ? [0.2, 1, 0.3] : [1, 0.2, 0.15], 0.8, 0); box([ps[0], ps[1] + (z.power ? 0.45 : -0.05), ps[2] - 0.45], [0.08, 0.08, 0.25], [0.7, 0.7, 0.7]);
   // generator panel fuse lights
@@ -228,7 +292,7 @@ function zqDraw(t) {
 // ---- HUD objectives panel ----
 function zqHUD(c, p, Wd, H) {
   const z = G.zm; if (!z || !z.parts) return;
-  const x = Wd - 30; let y = H - 400;
+  const x = Wd - 30; let y = H - 470;
   const line = (s, col) => { txt(c, keyify(s), x, y, 13, col || '#ddd', 'right', 600); y += 19; };
   line(z.power ? '電源：ON' : '電源：OFF（管制室）', z.power ? '#9fe0ff' : '#ff8a6a');
   line(z.fuseIn >= 3 ? 'ヒューズ：完了' : `ヒューズ：差込 ${z.fuseIn}/3${z.fuses ? `　所持 ${z.fuses}` : ''}`, z.fuseIn >= 3 ? '#d07aff' : '#ffd24a');
@@ -238,6 +302,13 @@ function zqHUD(c, p, Wd, H) {
     for (let i = 0; i < 4; i++) { c.fillStyle = ZCOLS[z.code[i]].css; c.globalAlpha = i < z.codeIdx ? 0.3 : 1; c.fillRect(x - (4 - i) * 22, y - 12, 18, 14); }
     c.globalAlpha = 1; y += 19;
   } else if (z.codeDone) line(z.rewardTaken ? '暗号：解除済み' : '暗号：解除 — 台座へ', '#d07aff');
+  if (z.power) {
+    const sd = z.stones.filter(s => s.done).length, vo = z.valves.filter(v => v.open).length;
+    line(z.keycard ? 'キーカード：入手済み' : 'キーカード：未入手', z.keycard ? '#c79aff' : '#8a877f');
+    line(`封印石：${sd}/3`, sd >= 3 ? '#c79aff' : '#cfcac0');
+    line(z.valvesDone ? '冷却ライン：開通' : vo ? `冷却バルブ：${vo}/4（${Math.ceil(z.valveT)}秒）` : '冷却バルブ：0/4', z.valvesDone ? '#9fe0ff' : vo ? '#ffd24a' : '#cfcac0');
+    if (zqVaultReq(z).ok && !z.vaultOpen) line('研究棟西の封鎖扉が開けられる', '#ff8adf');
+  }
   if (p.zshield) { line(`シールド ${p.zshield.hp}/${p.zshield.max}`, '#9fd7ff'); c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(x - 120, y - 12, 120, 5); c.fillStyle = '#9fd7ff'; c.fillRect(x - 120, y - 12, 120 * p.zshield.hp / p.zshield.max, 5); y += 8; }
   if (z.trapHeld) line('[4] テスラトラップを設置', '#9fe0ff');
 }
@@ -246,29 +317,33 @@ function zqHUD(c, p, Wd, H) {
 // ============================================================
 function zwTargets(eye) { return G.zombies.filter(b => b.alive && b.rise >= 1); }
 function zwChest(b) { return [b.pos[0], b.pos[1] + 1.15, b.pos[2]]; }
-function zwKill(b, p, d, fling) {
-  zmOnDamage(b, b.hp + 1, p, d, 'upper');
-  if (fling) b.fling = fling;
+function zwKill(b, p, d, fling, dmg) {
+  const was = b.alive;
+  zmOnDamage(b, dmg == null ? b.hp + 1 : dmg, p, d, 'upper');
+  if (was && !b.alive && fling) b.fling = fling;
   for (let i = 0; i < 5; i++) G.parts.push({ pos: zwChest(b), vel: [rand(-2, 2), rand(0, 3), rand(-2, 2)], life: 0.4, t: 0, size: 0.06, col: d.special === 'arc' ? [0.5, 0.85, 1] : [0.75, 0.5, 1], emis: 1, g: 4 });
 }
+// prototype weapons: no target cap; Pack-a-Punch levels raise range and damage a lot
+const ZW_LV = [1, 2.4, 4.2, 6.5];
 function zwFire(p, w, f) {
-  const d = w.d, eye = eyePos(p), mz = V.add(eye, V.add(V.mul(f, 0.7), [0, -0.06 * (1 - p.ads), 0]));
+  const d = w.d, lv = papLv(w), eye = eyePos(p), mz = V.add(eye, V.add(V.mul(f, 0.7), [0, -0.06 * (1 - p.ads), 0]));
   if (d.special === 'arc') {
     sfxPlasma(0); sfxBeep(220, 0.15);
-    // first target: closest zombie near the aim line
+    const reach = 45 + lv * 15, hop = 9 + lv * 4, dmg = 3000 * ZW_LV[lv];
     let first = null, ft = 1e9;
     for (const b of zwTargets()) {
-      const c = zwChest(b), oc = V.sub(c, eye), t = V.dot(oc, f); if (t < 0.5 || t > 45) continue;
-      const off = V.dist(V.add(eye, V.mul(f, t)), c); if (off > 0.9 + t * 0.03) continue;
+      const c = zwChest(b), oc = V.sub(c, eye), t = V.dot(oc, f); if (t < 0.5 || t > reach) continue;
+      const off = V.dist(V.add(eye, V.mul(f, t)), c); if (off > (b.isBoss ? 2.2 : 0.9) + t * 0.03) continue;
       if (!losClear(eye, c)) continue;
       if (t < ft) { ft = t; first = b; }
     }
-    if (!first) { const h = rayWorld(eye, f, 45); const end = h ? V.add(eye, V.mul(f, h.t)) : V.add(eye, V.mul(f, 45)); G.tracers.push({ a: mz, b: end, t: 0, life: 0.2, zap: 1 }); if (h) impactFX(end, h.n, { c: [0.5, 0.85, 1] }); return; }
-    const hit = new Set([first]); let cur = first, from = mz; const N = w.up ? 16 : 8;
-    for (let i = 0; i < N && cur; i++) {
+    if (!first) { const h = rayWorld(eye, f, reach); const end = h ? V.add(eye, V.mul(f, h.t)) : V.add(eye, V.mul(f, reach)); G.tracers.push({ a: mz, b: end, t: 0, life: 0.2, zap: 1 }); if (h) impactFX(end, h.n, { c: [0.5, 0.85, 1] }); return; }
+    // chain with no limit: jump to the nearest un-hit zombie within hop range until none is left
+    const hit = new Set([first]); let cur = first, from = mz;
+    while (cur) {
       G.tracers.push({ a: from, b: zwChest(cur), t: 0, life: 0.25, zap: 1 }); G.tracers.push({ a: from, b: V.add(zwChest(cur), [rand(-0.3, 0.3), rand(-0.3, 0.3), rand(-0.3, 0.3)]), t: 0, life: 0.18, zap: 1 });
-      zwKill(cur, p, d); from = zwChest(cur);
-      let nx = null, nd = w.up ? 13 : 10;
+      zwKill(cur, p, d, null, cur.isBoss ? dmg * 0.6 : dmg); from = zwChest(cur);
+      let nx = null, nd = hop;
       for (const b of zwTargets()) { if (hit.has(b)) continue; const dd = V.dist(zwChest(b), from); if (dd < nd && losClear(from, zwChest(b))) { nd = dd; nx = b; } }
       if (nx) hit.add(nx); cur = nx;
     }
@@ -276,18 +351,16 @@ function zwFire(p, w, f) {
   }
   if (d.special === 'grav') {
     sfxBoom(0, 0, true); p.shake = Math.max(p.shake || 0, 0.6);
-    const R = w.up ? 26 : 20, max = w.up ? 32 : 20, cand = [];
+    const R = 20 + lv * 7, cosMin = 0.87 - lv * 0.04, dmg = 4000 * ZW_LV[lv];
     for (const b of zwTargets()) {
       const c = zwChest(b), v = V.sub(c, eye), L = V.len(v); if (L > R) continue;
       const cos = V.dot(v, f) / (L || 1);
-      if (!(cos > 0.87 || (L < 4 && cos > 0.4))) continue;
+      if (!(cos > cosMin || (L < 4 + lv && cos > 0.4) || (b.isBoss && L < R && cos > cosMin - 0.1))) continue;
       if (!losClear(eye, c) && !losClear(eye, V.add(c, [0, 0.5, 0]))) continue;
-      cand.push([L, b, v]);
+      const dn = V.norm([v[0], 0, v[2]]), k = rand(13, 19) * (1 - L / (R * 1.6));
+      zwKill(b, p, d, [dn[0] * k, rand(5, 8), dn[2] * k], b.isBoss ? dmg * 0.6 : dmg * (1 - L / R * 0.3));
     }
-    cand.sort((a, b) => a[0] - b[0]);
-    for (const [L, b, v] of cand.slice(0, max)) { const dn = V.norm([v[0], 0, v[2]]), k = rand(13, 19) * (1 - L / (R * 1.6)); zwKill(b, p, d, [dn[0] * k, rand(5, 8), dn[2] * k]); }
-    // distortion wave particles
-    for (let i = 0; i < 40; i++) { const sp = coneDir(f, 22 * DEG), s = rand(14, 26); G.parts.push({ pos: V.add(mz, V.mul(sp, rand(0, 1))), vel: V.mul(sp, s), life: rand(0.35, 0.6), t: 0, size: rand(0.08, 0.2), col: [0.75, 0.6, 1], emis: 0.8, g: 0 }); }
+    for (let i = 0; i < 40 + lv * 15; i++) { const sp = coneDir(f, (22 + lv * 4) * DEG), s = rand(14, 26); G.parts.push({ pos: V.add(mz, V.mul(sp, rand(0, 1))), vel: V.mul(sp, s), life: rand(0.35, 0.6), t: 0, size: rand(0.08, 0.2), col: [0.75, 0.6, 1], emis: 0.8, g: 0 }); }
     for (let i = 0; i < 6; i++) G.parts.push({ pos: V.add(mz, V.mul(f, 0.5 + i * 0.7)), vel: V.mul(f, 18), life: 0.35, t: 0, size: 0.6 + i * 0.25, col: [0.6, 0.5, 0.9], g: 0, smoke: 1 });
   }
 }

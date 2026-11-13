@@ -89,6 +89,7 @@ function rigUpdate(b, dt) {
 }
 // returns [{z, m(rot+trans), s, k, deco, gun}]
 function rigParts(b) {
+  if (b.isBoss) return bossParts(b);
   if (b._rigT === G.time && b._rig) return b._rig;
   const P = b.pose || RIG_POSE.stand, out = b._rig || (b._rig = []);
   out.length = 0;
@@ -150,7 +151,8 @@ function rayBot(b, o, d, tmax) {
 
 // ---- AI ----
 function botEye(b) { return [b.pos[0], b.pos[1] + (b.pose ? b.pose.eye : 1.6), b.pos[2]]; }
-function botCenterY(b) { return b.pose ? b.pose.eye * 0.72 : 1.15; }
+function botCenterY(b) {
+  if (b.isBoss) return 1.9; return b.pose ? b.pose.eye * 0.72 : 1.15; }
 function entAimPoint(e, head) {
   if (e.isPlayer) return [e.pos[0], e.pos[1] + (head ? e.h - 0.12 : e.h * 0.72), e.pos[2]];
   const ey = e.pose ? e.pose.eye : 1.6;

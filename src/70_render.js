@@ -57,6 +57,7 @@ function renderFrame() {
     const [ty, tp] = yawPitchOf(V.mul(d, 1 / L));
     M4.ident(_m); M4.tr(_m, ...mid); M4.ry(_m, ty); M4.rx(_m, tp); if (t.zap) { M4.rz(_m, Math.random() * 6); M4.sc(_m, 0.05, 0.05, seg); drawCube(_m, [0.55, 0.85, 1], 1, 0.9 * (1 - k)); continue; }
     M4.sc(_m, 0.012, 0.012, seg);
+    if (t.col) { M4.sc(_m, 2.2, 2.2, 1); drawCube(_m, t.col, 1, 0.8 * (1 - k)); continue; }
     drawCube(_m, t.bot ? [1, 0.85, 0.45] : [1, 0.95, 0.8], 1, t.bot ? 0.7 : 0.5 * (1 - k));
   }
   gl.depthMask(true); gl.disable(gl.BLEND);
@@ -149,16 +150,18 @@ function drawExtras() {
     }
     for (const pw of G.zm.pows) { if (pw.t > 20 && Math.sin(t * 12) < 0) continue; box([pw.pos[0], pw.pos[1] + Math.sin(t * 3) * 0.15, pw.pos[2]], [0.45, 0.45, 0.45], ZPOW[pw.type].col, 0.9, t * 2); }
     for (const d of W.doors) if (!d.open) box([d.pos[0], 3.1, d.pos[2]], [0.3, 0.06, 0.3], [1, 0.8, 0.3], 1, t);
-    zqDraw(t);
+    zqDraw(t); zbDraw(t);
   }
 }
 const SKINC = { skin: [0.80, 0.62, 0.50], glove: [0.14, 0.14, 0.15], boots: [0.16, 0.14, 0.12], gun: [0.12, 0.12, 0.13], visor: [0.05, 0.06, 0.07] };
 function drawBot(b) {
+  if (b.isBoss) { drawBoss(b); return; }
   if (!b.alive && G.time - b.deathT > 2.6) return;
   const flash = G.time - b.lastDmgT < 0.08;
   const tc = b.team && b.team !== 'Z' ? TEAMC3[b.team === G.player.team ? 'A' : 'B'] : null;
-  const col = k => b.isZombie ? (k === 'skin' || k === 'glove' ? b.skin.skin : k === 'shirt' ? b.skin.shirt : k === 'pants' || k === 'boots' ? b.skin.pants : SKINC[k])
+  const col0 = k => b.isZombie ? (k === 'skin' || k === 'glove' ? b.skin.skin : k === 'shirt' ? b.skin.shirt : k === 'pants' || k === 'boots' ? b.skin.pants : SKINC[k])
     : k === 'shirt' ? b.skin.shirt : k === 'pants' ? b.skin.pants : k === 'vest' ? (tc ? tc.map(v => v * 0.45) : b.skin.vest) : k === 'helmet' ? (tc ? tc.map(v => v * 0.7) : b.skin.vest.map(v => v * 1.15)) : SKINC[k];
+  const col = k => { const c = col0(k); if (!b.isZombie || !c) return c; if (b.burnT > 0) return [c[0] * 0.5 + 0.5, c[1] * 0.5 + 0.18, c[2] * 0.4]; if (b.slowT > 0) return [c[0] * 0.5 + 0.25, c[1] * 0.5 + 0.38, c[2] * 0.5 + 0.5]; if (b.acidT > 0) return [c[0] * 0.6 + 0.12, c[1] * 0.6 + 0.4, c[2] * 0.5]; return c; };
   const parts = rigParts(b);
   let gun = null;
   for (const p of parts) {

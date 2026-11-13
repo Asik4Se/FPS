@@ -95,7 +95,7 @@ function drawHUD(dt) {
   // ---- ammo (bottom-right) ----
   const br = Wd - 28;
   if (p.alive) {
-    txt(c, d.name + (w.shellMode ? '  装填中' : ''), br, H - 78, 14, '#cfcac0', 'right', 600);
+    txt(c, (G.mode === 'zombies' ? zmWName(w) : d.name) + (w.shellMode ? '  装填中' : ''), br, H - 78, 14, G.mode === 'zombies' && w.elem ? ELEMS[w.elem].css : G.mode === 'zombies' && w.up ? '#d9a8ff' : '#cfcac0', 'right', 600);
     c.font = '700 40px Oswald, sans-serif'; const rw = String(w.res).length * 11 + 14;
     txt(c, String(w.mag), br - rw - 6, H - 30, 40, w.mag === 0 ? '#ff5a4a' : '#fff', 'right', 700);
     txt(c, String(w.res), br, H - 32, 18, '#cfcac0', 'right', 600);
@@ -337,7 +337,7 @@ function drawZombieHUD(c, p, Wd, H) {
   let ty = 60;
   if (z.insta > 0) { txt(c, `一撃必殺 ${Math.ceil(z.insta)}`, Wd / 2, ty, 15, '#ff5a4a', 'center', 700); ty += 20; }
   if (z.dbl > 0) { txt(c, `ダブルポイント ${Math.ceil(z.dbl)}`, Wd / 2, ty, 15, '#ffd24a', 'center', 700); ty += 20; }
-  zqHUD(c, p, Wd, H);
+  zqHUD(c, p, Wd, H); zbHUD(c, Wd, H);
   if (z.prompt) txt(c, keyify(z.prompt), Wd / 2, H / 2 + 130, 16, '#fff', 'center', 600);
   if (z.roll && !z.roll.done) txt(c, '…', Wd / 2, H / 2 + 150, 16, '#fff', 'center', 600);
   const left = z.toSpawn + G.zombies.filter(b => b.alive).length;

@@ -75,8 +75,9 @@ function endMatch(winnerEnt) {
     const P = G.player, M = MODES[G.mode];
     let title, sub, win;
     if (G.mode === 'zombies') {
-      const z = G.zm; title = 'ゲームオーバー'; win = false;
-      sub = `ラボ — ラウンド ${z.round} まで生存 ／ ${z.kills}キル（ヘッドショット${z.heads}） ／ ${z.points}ポイント`;
+      const z = G.zm; title = z.cleared ? 'クリア！' : 'ゲームオーバー'; win = !!z.cleared;
+      sub = z.cleared ? `${BOSS_NAME}を討伐（ラウンド${z.bossRound}で突入） ／ ${z.kills}キル ／ 迷彩「ネメシス」解除済み`
+        : `ラボ — ラウンド ${z.round} まで生存 ／ ${z.kills}キル（ヘッドショット${z.heads}） ／ ${z.points}ポイント`;
       $('endtable').innerHTML = '';
     } else {
       if (isTeamMode()) { const w = modeWinner(); win = w === P.team; title = w ? (win ? '勝利' : '敗北') : '引き分け'; sub = `${MAPS[W.id].name} ${M.name} — 味方 ${G.teamScore.A} : 敵 ${G.teamScore.B}`; }

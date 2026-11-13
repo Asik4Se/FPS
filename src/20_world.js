@@ -339,7 +339,7 @@ function buildMap(id) {
   W.boxes = []; CUR_STAIR_COL = null;
   [W.minX, W.maxX, W.minZ, W.maxZ] = M.bounds;
   B(W.minX - 20, -1, W.minZ - 20, W.maxX + 20, 0, W.maxZ + 20, M.env.ground, { ground: 1 });
-  W.doors = []; W.buys = []; W.boxLocs = []; W.zoneSpawn = null; W.windows = []; W.zq = null;
+  W.doors = []; W.buys = []; W.boxLocs = []; W.zoneSpawn = null; W.windows = []; W.zq = null; W.bossDoor = null;
   M.build();
   applyEnv(M.env);
   buildNav();
@@ -623,6 +623,8 @@ function buildLab() {
     const u0 = ax === 'z' ? -34 : -40, u1 = -u0;
     const ops = doors.map(d => { const o = DOOR_OP(d[0]); return { a: o.a - u0, b: o.b - u0, y0: 0, y1: 3.0 }; });
     ops.push({ a: win[0] - 0.8 - u0, b: win[0] + 0.8 - u0, y0: 0.9, y1: 2.3 });
+    if (ax === 'z' && f === -14) ops.push({ a: -22 - 1.8 - u0, b: -22 + 1.8 - u0, y0: 0, y1: 3.4 }); // sealed vault door to the boss arena
+    ops.sort((p, q) => p.a - q.a);
     wallSeg(ax, f, u0, u1, 0, WH, T, WC, ops);
     for (const [c, a1, b1, cost] of doors) {
       if (ax === 'z') door(f - 0.45, c - 1.6, f + 0.45, c + 1.6, a1, b1, cost);
@@ -631,7 +633,14 @@ function buildLab() {
     if (ax === 'z') addWin(f, win[0], win[1], 0, 'A', T); else addWin(win[0], f, 0, win[2], 'A', T);
   }
   // closed corner blocks (collapsed wings)
-  Bc(-27, -22.5, 26, 23, 4.0, [0.30, 0.29, 0.27]); Bc(27, 22.5, 26, 23, 4.0, [0.30, 0.29, 0.27]);
+  Bc(27, 22.5, 26, 23, 4.0, [0.30, 0.29, 0.27]);
+  // ---- X: containment vault (boss arena), behind the sealed door ----
+  const vd = [0.16, 0.17, 0.2];
+  W.bossDoor = { pos: [-14, 1.5, -22], open: false, boxes: [B(-14.5, 0, -23.8, -13.5, 3.4, -20.2, vd), B(-14.7, 3.4, -24.2, -13.3, 3.7, -19.8, [0.3, 0.3, 0.34])] };
+  for (const [x, z] of [[-34, -29], [-20, -29], [-34, -16], [-20, -16]]) { Bc(x, z, 1.4, 1.4, 5.5, [0.26, 0.27, 0.3]); Bc(x, z, 1.8, 1.8, 0.4, [0.2, 0.2, 0.23]); }
+  Bc(-27, -22.5, 7, 7, 0.25, [0.18, 0.18, 0.21]); // containment dais
+  for (const [x, z] of [[-31, -22.5], [-23, -22.5]]) Bc(x, z, 0.5, 4, 0.9, [0.3, 0.3, 0.33]);
+  W.zq_arena = { center: [-27, 0.25, -22.5], spawns: [[-38, -32], [-16.5, -32], [-38, -13.5], [-16.5, -13.5], [-27, -32.5], [-38.5, -22]], min: [-40, -34], max: [-14.5, -11.5] };
   for (const [x, z] of [[-30, -12.5], [-20, -12.5], [20, 12.5], [32, 12.5]]) Bc(x, z, 2.2, 1.2, 1.0, [0.36, 0.34, 0.31]);
   const metal = [0.50, 0.52, 0.55], dark = [0.22, 0.23, 0.25], wood = [0.45, 0.33, 0.20];
   // ---- A: entrance hall ----
@@ -676,6 +685,8 @@ function buildLab() {
   pk('jug', 12, -32.8, 0); pk('speed', 36, 9, 0); pk('dtap', -30, 32.8, 0); pk('rev', -38.5, 9, 1);
   W.boxLocs = [{ pos: [-10, 0, -15.5], zone: 'B' }, { pos: [24, 0, -6], zone: 'C' }, { pos: [30, 0, -18], zone: 'F' }, { pos: [-30, 0, 27], zone: 'G' }];
   W.buys.push({ type: 'pap', pos: [8, 0, 32.3] });
+  for (const [x, z] of [[-10.5, -24], [-33, -6], [-36, 26]]) Bc(x, z, 0.9, 0.9, 0.7, [0.24, 0.24, 0.28]);
+  for (const [x, z] of [[36, -3], [-8, 23], [30, -23], [-18, 16]]) Bc(x, z, 0.5, 0.5, 1.1, [0.35, 0.36, 0.38]);
   for (const [x, z] of [[-9.5, -2], [6, 26], [26, -14], [-22, 26]]) { Bc(x, z, 1.2, 0.7, 0.8, [0.22, 0.30, 0.20]); W.buys.push({ type: 'ammo', pos: [x, 0, z] }); }
   for (const b of W.buys) {
     if (b.type === 'perk') { const c = ZPERKS[b.perk].col; b.body = Bc(b.pos[0], b.pos[2], b.rot ? 0.9 : 1.2, b.rot ? 1.2 : 0.9, 2.2, c.map(v => v * 0.55)); }
@@ -683,6 +694,9 @@ function buildLab() {
   }
   // ---- quest objects ----
   W.zq = {
+    arena: W.zq_arena,
+    stones: [{ pos: [-10.5, 0, -24], zone: 'B' }, { pos: [-33, 0, -6], zone: 'E' }, { pos: [-36, 0, 26], zone: 'G' }],
+    valves: [{ pos: [36, 0, -3], zone: 'C' }, { pos: [-8, 0, 23], zone: 'D' }, { pos: [30, 0, -23], zone: 'F' }, { pos: [-18, 0, 16], zone: 'G' }],
     power: [-20, 1.4, 32.8], gen: [39.5, 1.2, -14], terminal: [-36, 1.2, 14], bench: [7, 1.0, 5], pedestal: [-6, 1.0, -5],
     lamps: [{ pos: [5, 3.6, -33.6], zone: 'B' }, { pos: [39.6, 3.6, 6], zone: 'C' }, { pos: [-5, 3.6, 33.6], zone: 'D' }, { pos: [-39.6, 3.6, -6], zone: 'E' }],
     fuseSpots: [[-12, 0.5, -12.6], [38, 0.5, -9.5], [12, 0.5, 13], [-38, 0.5, -9.5], [16.5, 0.5, -33], [-16.5, 0.5, 13]],

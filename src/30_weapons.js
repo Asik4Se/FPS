@@ -187,6 +187,13 @@ const CAMOS = [
   { id: 'cyber', name: 'サイバー', pat: 7, a: [0.05, 0.06, 0.09], b: [0.10, 0.85, 1.0], c: [0, 0, 0] },
   { id: 'gold', name: 'ゴールド', pat: 4, a: [0.95, 0.72, 0.25], b: [0, 0, 0], c: [0, 0, 0], unlock: 'gold' },
   { id: 'diamond', name: 'ダイヤモンド', pat: 5, a: [0.75, 0.85, 0.95], b: [0.35, 0.55, 0.85], c: [0, 0, 0], unlock: 'diamond' },
+  { id: 'nemesis', name: 'ネメシス', pat: 6, a: [0.06, 0.02, 0.10], b: [0.65, 0.10, 1.0], c: [0.2, 1.0, 0.85], unlock: 'boss' },
+];
+// Pack-a-Punch looks (zombies only, not selectable)
+const PAP_CAMOS = [
+  { id: 'pap1', name: '改', pat: 7, a: [0.06, 0.05, 0.10], b: [0.65, 0.35, 1.0], c: [0, 0, 0] },
+  { id: 'pap2', name: '改II', pat: 6, a: [0.18, 0.02, 0.08], b: [1.0, 0.25, 0.55], c: [1.0, 0.75, 0.35] },
+  { id: 'pap3', name: '改III', pat: 7, a: [0.08, 0.06, 0.02], b: [1.0, 0.8, 0.25], c: [0, 0, 0] },
 ];
 const CAMO_BY_ID = Object.fromEntries(CAMOS.map(c => [c.id, c]));
 const GOLD_KILLS = 40;
@@ -196,11 +203,13 @@ const wKills = id => STATS.wk[id] || 0;
 const hasGold = id => wKills(id) >= GOLD_KILLS;
 function camoUnlocked(camoId, wid) {
   const c = CAMO_BY_ID[camoId]; if (!c || !c.unlock) return true;
+  if (c.unlock === 'boss') return !!STATS.boss;
   if (c.unlock === 'gold') return hasGold(wid);
   const cls = WPN[wid].cls; return hasGold(wid) && Object.keys(WPN).filter(k => WPN[k].cls === cls && k !== wid && hasGold(k)).length >= 1;
 }
 function camoReq(camoId, wid) {
   const c = CAMO_BY_ID[camoId]; if (!c || !c.unlock) return '';
+  if (c.unlock === 'boss') return 'ゾンビモードでボス「研究体ゼロ」を倒す（全武器で解除）';
   if (c.unlock === 'gold') return `${WPN[wid].name}で${GOLD_KILLS}キル（${Math.min(wKills(wid), GOLD_KILLS)}/${GOLD_KILLS}）`;
   return `${WPN[wid].name}と同じ種類の別の武器1丁でゴールド取得`;
 }
