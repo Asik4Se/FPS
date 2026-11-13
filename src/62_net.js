@@ -11,7 +11,7 @@
 //   - Clock offset / RTT come from ping samples filtered by minimum RTT (robust against spikes).
 // ============================================================
 const NET = (() => {
-  const TICK = 1 / 60, SEND_HZ = 60;
+  const TICK = 1 / 60, SEND_HZ = 30;
   // ---------- binary codec ----------
   const BTN = ['fire', 'ads', 'jumpP', 'cHeld', 'zHeld', 'sprintHeld', 'reloadP', 'meleeP', 'lethalHeld', 'tacP', 'useHeld', 'swapP'];
   function encodeInput(seq, t, a, yaw, pitch) {
@@ -55,41 +55,62 @@ const NET = (() => {
   }
   // ---------- clock sync (min-RTT filter) ----------
   class Clock {
-    constructor() { this.samples = []; this.offset = 0; this.rtt = 0.1; }
+    constructor() { this.samples = []; this.offset = 0; this.target = null; this.rtt = 0.1; this.lastL = null; }
     sample(sent, serverT, recv) { // seconds, local clock for sent/recv
       const rtt = recv - sent; this.samples.push({ rtt, off: serverT + rtt / 2 - recv });
       if (this.samples.length > 12) this.samples.shift();
       const best = this.samples.slice().sort((a, b) => a.rtt - b.rtt).slice(0, 4);
-      this.offset = best.reduce((s, x) => s + x.off, 0) / best.length; this.rtt = best[0].rtt;
+      this.target = best.reduce((s, x) => s + x.off, 0) / best.length; this.rtt = best[0].rtt;
+      if (this.samples.length === 1) this.offset = this.target;
     }
-    server(local) { return local + this.offset; }
+    // the offset glides toward new estimates (max 5% speed change) so remote players never jump when it is corrected
+    server(local) {
+      if (this.target != null) {
+        const dt = this.lastL == null ? 0 : Math.max(0, Math.min(0.1, local - this.lastL)), diff = this.target - this.offset;
+        this.offset += Math.abs(diff) > 0.5 ? diff : clamp(diff, -dt * 0.05, dt * 0.05);
+      }
+      this.lastL = local;
+      return local + this.offset;
+    }
   }
-  // ---------- adaptive interpolation buffer for remote entities ----------
+  // ---------- adaptive interpolation (jitter) buffer for remote entities ----------
+  // delay = how late snapshots really arrive (95th percentile of arrival lag over ~3 s) + a small margin.
+  // Rises immediately when the connection gets worse, shrinks slowly when it gets better.
   class Interp {
-    constructor() { this.buf = []; this.gaps = []; this.lastT = null; this.delay = 2 / SEND_HZ; }
-    push(t, s) {
-      if (this.lastT != null) { this.gaps.push(t - this.lastT); if (this.gaps.length > 30) this.gaps.shift(); }
-      this.lastT = t; this.buf.push({ t, s }); if (this.buf.length > 40) this.buf.shift();
-      if (this.gaps.length > 4) { // delay = mean gap + 2 * jitter, clamped (lower = fresher)
-        const m = this.gaps.reduce((a, b) => a + b, 0) / this.gaps.length, j = Math.sqrt(this.gaps.reduce((a, g) => a + (g - m) ** 2, 0) / this.gaps.length);
-        this.delay = clamp(m + 2 * j, 1 / SEND_HZ, 0.15);
+    constructor() { this.buf = []; this.lags = []; this.delay = 0.1; this.want = 0.1; }
+    push(t, s, now) {
+      const B = this.buf; if (B.length && t <= B[B.length - 1].t) return;
+      B.push({ t, s }); if (B.length > 60) B.shift();
+      if (now != null) {
+        this.lags.push(now - t); if (this.lags.length > 90) this.lags.shift();
+        const sorted = this.lags.slice().sort((a, b) => a - b), p95 = sorted[Math.floor(sorted.length * 0.95)] || 0;
+        const gap = B.length > 1 ? (t - B[0].t) / (B.length - 1) : 1 / 30;
+        this.want = clamp(p95 + gap * 0.5 + 0.01, 0.03, 0.35);
       }
     }
-    sample(now) {
+    sample(now, dt) {
+      this.delay += (this.want - this.delay) * (this.want > this.delay ? 0.25 : 0.01);
       const t = now - this.delay, B = this.buf; if (!B.length) return null;
       if (t <= B[0].t) return B[0].s;
+      const L = B[B.length - 1];
+      if (t >= L.t) return B.length > 1 ? extrap(L, B[B.length - 2], t) : L.s; // late packet: short, capped extrapolation
       for (let i = B.length - 1; i > 0; i--) if (B[i - 1].t <= t) {
-        const a = B[i - 1], b = B[i];
-        if (t > b.t) return extrap(b, B[i - 1], t); // tiny extrapolation if the next packet is late
-        const k = (t - a.t) / (b.t - a.t || 1);
+        const a = B[i - 1], b = B[i], k = (t - a.t) / (b.t - a.t || 1);
         return { ...b.s, pos: [lerp(a.s.pos[0], b.s.pos[0], k), lerp(a.s.pos[1], b.s.pos[1], k), lerp(a.s.pos[2], b.s.pos[2], k)], yaw: a.s.yaw + angDiff(a.s.yaw, b.s.yaw) * k, pitch: lerp(a.s.pitch, b.s.pitch, k) };
       }
-      return B[B.length - 1].s;
+      return L.s;
     }
   }
   function extrap(b, a, t) {
-    const dt = Math.min(t - b.t, 0.1), span = b.t - a.t || 1;
+    const dt = Math.min(t - b.t, 0.12), span = b.t - a.t || 1;
     return { ...b.s, pos: b.s.pos.map((p, i) => p + (b.s.pos[i] - a.s.pos[i]) / span * dt) };
+  }
+  // final visual smoothing of a remote position (hides the small snap when a late packet finally arrives)
+  function smoothRemote(e, target, dt) {
+    if (!e._sp || Math.hypot(target[0] - e._sp[0], target[1] - e._sp[1], target[2] - e._sp[2]) > 2.5) { e._sp = target.slice(); return e._sp; }
+    const k = 1 - Math.exp(-dt * 25);
+    for (let i = 0; i < 3; i++) e._sp[i] += (target[i] - e._sp[i]) * k;
+    return e._sp;
   }
   // ---------- client prediction: input/state history + smooth correction ----------
   class Predict {
@@ -129,7 +150,7 @@ const NET = (() => {
       try { return fn(); } finally { for (const [e, p, y, st] of saved) { e.pos = p; e.yaw = y; e.stance = st; e._rigT = null; } }
     }
   }
-  return { TICK, SEND_HZ, encodeInput, decodeInput, encodeSnapshot, decodeSnapshot, Clock, Interp, Predict, History,
+  return { TICK, SEND_HZ, smoothRemote, encodeInput, decodeInput, encodeSnapshot, decodeSnapshot, Clock, Interp, Predict, History,
     // recommended server settings (see README note in chat): Singapore region, paid instance (no spin-down), ws with perMessageDeflate:false
     SERVER_OPTS: { perMessageDeflate: false, maxPayload: 4096 } };
 })();

@@ -8,7 +8,7 @@
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 const PORT = process.env.PORT || 10000;
 const PUB = path.join(__dirname, '..', 'public');
-const TICK_HZ = 60, MAX_REWIND = 0.35, MAX_PLAYERS = 12, MINLIMIT = +process.env.MINLIMIT || 5;
+const TICK_HZ = 30, MAX_REWIND = 0.35, MAX_PLAYERS = 12, MINLIMIT = +process.env.MINLIMIT || 5;
 const T0 = process.hrtime.bigint();
 const now = () => Number(process.hrtime.bigint() - T0) / 1e9; // seconds (server clock)
 let MAXHIT = {};

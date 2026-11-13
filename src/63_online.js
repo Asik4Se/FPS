@@ -94,7 +94,7 @@ function netSnap(buf) {
     const lb = ON.localBots.get(e.id); if (lb) { lb.hp = e.hp; continue; }
     let b = ON.remotes.get(e.id);
     if (!b && G.online) { const info = ON.lobby && ON.lobby.players.find(p => p.id === e.id); b = netMakeRemote(info || { id: e.id, name: 'Player' + e.id }); }
-    if (b) ON.interp.get(e.id).push(s.t, e);
+    if (b) ON.interp.get(e.id).push(s.t, e, ON.clock.server(nowS()));
   }
 }
 const localTeam = t => !t ? null : t === ON.myTeam ? 'A' : 'B';
@@ -208,7 +208,7 @@ function netTick(dt) {
   ON.pend.clear();
   // upload own state every frame (capped at 60/s)
   ON.sendAcc += dt;
-  if (ON.sendAcc >= 1 / 62 && ON.ws && ON.ws.readyState === 1) {
+  if (ON.sendAcc >= 1 / 31 && ON.ws && ON.ws.readyState === 1) {
     ON.sendAcc = 0;
     const st = P.stance === 'prone' || P.diving ? 'prone' : P.stance === 'crouch' || P.slideT > 0 ? 'crouch' : 'stand';
     ON.ws.send(NET.encodeSnapshot(srvNow, 0, [{ id: ON.id, pos: P.pos, yaw: P.yaw, pitch: P.pitch, stance: st, alive: P.alive, ads: P.ads, sprint: P.sprint, hp: P.hp, wpnIdx: Math.max(0, WIDS.indexOf(curW(P).id)) }]));
@@ -219,9 +219,9 @@ function netTick(dt) {
   }
   // remote players from the interpolation buffers
   for (const [id, b] of ON.remotes) {
-    const s = ON.interp.get(id).sample(srvNow); if (!s) continue;
+    const s = ON.interp.get(id).sample(srvNow, dt); if (!s) continue;
     const prev = b.pos;
-    b.pos = s.pos.slice(); b.yaw = s.yaw; b.pitch = s.pitch; b.stance = s.stance; b.ads = s.ads; b.sprint = s.sprint;
+    b.pos = NET.smoothRemote(b, s.pos, dt).slice(); b.yaw = s.yaw; b.pitch = s.pitch; b.stance = s.stance; b.ads = s.ads; b.sprint = s.sprint;
     b.h = s.stance === 'prone' ? 0.62 : s.stance === 'crouch' ? 1.3 : 1.8; b.eyeH = b.h - 0.18;
     if (s.alive && !b.alive && G.time - b.deathT > 0.5) { b.alive = true; b.pose = null; }
     const wd = WPN[WIDS[s.wpnIdx]]; if (wd) b.wd = wd;
