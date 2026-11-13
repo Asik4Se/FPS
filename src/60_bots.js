@@ -225,7 +225,7 @@ function updateBot(b, dt) {
     if ((b.wt === 'knife' || dist < 3) && walkClear(b.pos, t.pos)) { mvx = -Math.sin(ty); mvz = -Math.cos(ty); spd = BASE_SPEED * (b.wt === 'knife' ? 1.2 : 0.9); b.stance = 'stand'; }
     if (dist < 1.9 && b.meleeT <= 0 && !range) { b.meleeT = 0.9; const tgt = t; setTimeout(() => { if (b.alive && tgt.alive && V.dist(b.pos, tgt.pos) < 2.3) damageEnt(tgt, 135, b, null, 'melee', fwdVec(b.yaw, 0), 1); }, 280); }
     // grenades
-    if (b.nadeT <= 0 && dist > 9 && dist < 30 && b.trackT > 0.8 && !range && G.mode !== 'gun') {
+    if (b.nadeT <= 0 && dist > 9 && dist < 30 && b.trackT > 0.8 && !range && G.mode !== 'gun' && !G.online) {
       b.nadeT = rand(18, 35);
       const tp = t.pos, dxz = Math.hypot(tp[0] - b.pos[0], tp[2] - b.pos[2]), tf = clamp(dxz / 15, 0.6, 2.2);
       const v = [(tp[0] - b.pos[0]) / tf, (tp[1] + 0.3 - (b.pos[1] + 1.6)) / tf + 0.5 * 15 * tf, (tp[2] - b.pos[2]) / tf];
@@ -327,6 +327,7 @@ function botShoot(b, dist) {
     const dd = wd.pellets ? coneDir(dir, wd.pelSpread * 0.8 * DEG) : dir;
     const res = fireBullet(b, eye, dd, wd, b.bw.range + 20);
     if (i < 2) G.tracers.push({ a: V.add(eye, V.mul(dd, 0.8)), b: res.point, t: 0, life: 0.06, bot: 1 });
+    if (i === 0 && G.online && b.netBot) netShot(V.add(eye, V.mul(dd, 0.8)), res.point, wd.kind, false, b.netId);
   }
   const P = G.player;
   if (P && _sndBudget < 4) {

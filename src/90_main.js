@@ -145,7 +145,7 @@ function frame(now) {
     updateStreaks(dt);
     updateFX(dt);
   } else if (G.running && G.online) { // online keeps running behind the pause menu
-    G.time += dt; if (!G.over) updatePlayer(G.player, Object.assign({}, NOACT), dt); updateFX(dt);
+    G.time += dt; if (!G.over) { updatePlayer(G.player, Object.assign({}, NOACT), dt); for (const b of G.bots) updateBot(b, dt); } updateFX(dt);
   } else if (G.menuCam) {
     const p = G.player; p.camYaw = now * 0.00004 + 2.6; p.camPitch = -0.12; p.camRoll = 0; p.fov = 70;
   }

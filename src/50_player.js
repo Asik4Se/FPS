@@ -65,8 +65,8 @@ function spawnEnt(e) {
     equipClass(e); e.stamina = hasPerk('ec') ? 8 : 4; e.swapT = 0.2; e.swapTot = 0.2; e.streak = 0;
     e.streakPts = 0; e.awarded = [false, false, false]; e.flashT = 0; e.stunT = 0; e.cookT = 0; e.hp = e.maxHp || 100;
     e.slideT = 0; e.cPend = e.zPend = false; e.proneTrans = 0; e.stanceKick = 0; e.eyeV = 0; e.crawl = 0; e.diving = false; e.diveLand = 0;
-    if (G.online) netOnSpawn(e);
   }
+  if (G.online && (e.isPlayer || e.netBot)) netOnSpawn(e);
 }
 function setStance(p, s) {
   if (s === p.stance) return true;
@@ -505,7 +505,7 @@ function rayPlayer(p, o, d, tmax) {
 function damageEnt(e, dmg, src, d, zone, dir, dist) {
   if (!e.alive || G.over) return;
   if (src && src !== e && !isEnemy(src, e)) return;
-  if (G.online) { if (e.isRemote && src && src.isPlayer) netClaim(e, dmg, src, d, zone, dir); return; } // online: the server decides damage
+  if (G.online) { if (src && src !== e && (src.isPlayer || src.netBot) && e.netId) netClaim(e, dmg, src, d, zone, dir); return; } // online: the server decides damage
   if (e.isZombie) { zmOnDamage(e, dmg, src, d, zone); return; }
   if (e.isPlayer && e.invulnT > G.time) return;
   e.hp -= dmg; e.lastDmgT = G.time;

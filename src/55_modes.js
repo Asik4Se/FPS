@@ -106,7 +106,7 @@ function updateMode(dt) {
 }
 // bots: objective goal when idle
 function botObjective(b) {
-  if (G.mode === 'dom' && G.flags) {
+  if (G.mode === 'dom' && G.flags && G.flags.length) {
     const mine = G.flags.filter(f => f.owner === b.team), notMine = G.flags.filter(f => f.owner !== b.team);
     let f;
     if (notMine.length && (Math.random() < 0.75 || !mine.length)) f = notMine.slice().sort((x, y) => V.dist2(x.pos, b.pos) - V.dist2(y.pos, b.pos))[Math.random() < 0.7 ? 0 : Math.min(1, notMine.length - 1)];

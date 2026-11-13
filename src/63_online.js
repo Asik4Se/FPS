@@ -2,7 +2,7 @@
 //  ONLINE: rooms / lobby / netplay client (server: server/server.js)
 // ============================================================
 const ON = { ws: null, id: 0, code: '', lobby: null, status: '', err: '', clock: new NET.Clock(), remotes: new Map(), interp: new Map(),
-  pend: new Map(), sendAcc: 0, pingT: 0, endAt: 0, myTeam: null, hpSrv: 100, connecting: false, lastSnapT: 0 };
+  pend: new Map(), localBots: new Map(), isHost: false, sendAcc: 0, pingT: 0, endAt: 0, myTeam: null, hpSrv: 100, connecting: false, lastSnapT: 0 };
 const WIDS = Object.keys(WPN);
 const nowS = () => performance.now() / 1000;
 // server URL: same origin when the page is served by the game server, otherwise the saved URL (e.g. https://xxx.onrender.com)
@@ -59,7 +59,29 @@ function netMsg(m) {
       break;
     }
     case 'kill': netKill(m); break;
-    case 'left': { const b = ON.remotes.get(m.id); if (b) { G.ents = G.ents.filter(e => e !== b); ON.remotes.delete(m.id); ON.interp.delete(m.id); } popup(`${m.name} が退出しました`, '#bbb'); break; }
+    case 'mode': {
+      if (!G.online) break;
+      G.teamScore = { A: m.ts[ON.myTeam || 'A'] || 0, B: m.ts[ON.myTeam === 'B' ? 'A' : 'B'] || 0 };
+      G.flags = m.flags.map(f => ({ name: f.name, pos: f.pos, owner: localTeam(f.owner), cap: f.cap, capTeam: localTeam(f.capTeam) }));
+      const old = new Map(G.tags.map(t => [t.id, t]));
+      G.tags = m.tags.map(t => ({ id: t.id, pos: t.pos, team: localTeam(t.team), t: old.has(t.id) ? old.get(t.id).t : 0 }));
+      break;
+    }
+    case 'cap': {
+      if (!G.online) break;
+      const mine = m.team === ON.myTeam; popup(`${m.flag} を${mine ? '確保' : '奪われた'}`, mine ? TEAMC.A : TEAMC.B); sfxUAV();
+      if (m.ids.includes(ON.id)) popup('旗確保 +150', '#fff');
+      for (const id in (m.sc || {})) { const e = +id === ON.id ? G.player : ON.remotes.get(+id) || ON.localBots.get(+id); if (e) e.score = m.sc[id]; }
+      break;
+    }
+    case 'tag': { const e = m.id === ON.id ? G.player : ON.remotes.get(m.id) || ON.localBots.get(m.id); if (e && m.sc != null) e.score = m.sc; } if (m.id === ON.id) { popup(m.kind === 'confirm' ? 'キル確定 +50' : 'キル阻止 +50', m.kind === 'confirm' ? '#ffcf5a' : '#9fd7ff'); sfxBuy(); } break;
+    case 'joinMid': if (G.online && !ON.remotes.has(m.info.id)) netMakeRemote(m.info); popup(`${m.info.name} が参加しました`, '#bbb'); break;
+    case 'left': {
+      const b = ON.remotes.get(m.id) || ON.localBots.get(m.id);
+      if (b) { G.ents = G.ents.filter(e => e !== b); G.bots = G.bots.filter(e => e !== b); ON.remotes.delete(m.id); ON.interp.delete(m.id); ON.localBots.delete(m.id); }
+      if (!(b && (b.netBot || b.isBotRemote))) popup(`${m.name} が退出しました`, '#bbb');
+      break;
+    }
     case 'end': netEnd(m); break;
     case 'chat': popup(`${m.name}: ${m.msg}`, '#9fd7ff'); break;
   }
@@ -68,6 +90,7 @@ function netSnap(buf) {
   const s = NET.decodeSnapshot(buf); ON.lastSnapT = s.t;
   for (const e of s.ents) {
     if (e.id === ON.id) { ON.hpSrv = e.hp; if (G.online && G.player.alive && e.alive) G.player.hp = e.hp; continue; }
+    const lb = ON.localBots.get(e.id); if (lb) { lb.hp = e.hp; continue; }
     let b = ON.remotes.get(e.id);
     if (!b && G.online) { const info = ON.lobby && ON.lobby.players.find(p => p.id === e.id); b = netMakeRemote(info || { id: e.id, name: 'Player' + e.id }); }
     if (b) ON.interp.get(e.id).push(s.t, e);
@@ -77,7 +100,7 @@ const localTeam = t => !t ? null : t === ON.myTeam ? 'A' : 'B';
 function netMakeRemote(info) {
   const b = makeEnt(info.name, false);
   Object.assign(b, { isRemote: true, netId: info.id, team: localTeam(info.team), skin: BOT_SKINS[info.id % BOT_SKINS.length], stance: 'stand', pose: null, walkT: 0,
-    alive: false, deathT: -99, kills: info.kills || 0, deaths: info.deaths || 0, score: info.score || 0, wd: WPN.ar94, ads: 0, prevPos: null });
+    alive: false, deathT: -99, kills: info.kills || 0, deaths: info.deaths || 0, score: info.score || 0, wd: WPN.ar94, ads: 0, prevPos: null, isBotRemote: !!info.bot });
   G.ents.push(b); ON.remotes.set(info.id, b); ON.interp.set(info.id, new NET.Interp());
   return b;
 }
@@ -89,12 +112,24 @@ function netStart(m) {
   audioInit(); buildMap(m.map);
   Object.assign(G, { ents: [], bots: [], zombies: [], time: 0, over: false, tracers: [], parts: [], projs: [], killfeed: [], popups: [], uavT: 0, lastHitInfo: null,
     stats: null, menuCam: false, pendingClass: -1, smokes: [], sensors: [], drones: [], sentries: [], timers: [], flags: [], tags: [], teamScore: { A: 0, B: 0 }, cuavT: 0, vsatT: 0, enemyUavT: 0, swarm: null, zm: null, winner: null });
-  G.online = true; G.scoreLimit = m.limit; ON.endAt = m.endAt; ON.remotes.clear(); ON.interp.clear(); ON.pend.clear();
+  G.online = true; G.scoreLimit = m.limit; G.diff = m.diff | 0; ON.endAt = m.endAt; ON.remotes.clear(); ON.interp.clear(); ON.pend.clear(); ON.localBots.clear();
+  ON.isHost = m.host === ON.id;
   CLS = CLASSES.list[CLASSES.cur];
-  const P = newPlayer(); P.name = onName(); G.player = P; G.ents.push(P);
-  P.team = MODES[G.mode].team ? 'A' : null;
-  for (const info of m.players) if (info.id !== ON.id) netMakeRemote(info);
+  const P = newPlayer(); P.name = onName(); P.netId = ON.id; G.player = P; G.ents.push(P);
+  const meInfo = m.players.find(p => p.id === ON.id) || {};
+  P.team = MODES[G.mode].team ? 'A' : null; P.gg = meInfo.gg || 0; P.kills = meInfo.kills || 0; P.deaths = meInfo.deaths || 0; P.score = meInfo.score || 0;
+  let bi = 0;
+  for (const info of m.players) {
+    if (info.id === ON.id) continue;
+    if (info.bot && ON.isHost) { // the host simulates the bots with the normal offline AI
+      const b = newBot(bi++); Object.assign(b, { name: info.name, netId: info.id, netBot: true, team: localTeam(info.team), gg: info.gg || 0, kills: info.kills || 0, deaths: info.deaths || 0, score: info.score || 0, nadeT: 1e9 });
+      G.bots.push(b); G.ents.push(b); ON.localBots.set(info.id, b);
+    } else { const r = netMakeRemote(info); r.gg = info.gg || 0; }
+  }
   spawnEnt(P);
+  for (const b of G.bots) { spawnEnt(b); resetBotAI(b); }
+  if (G.mode === 'dom' && ON.isHost) { setupDom(); netSend({ t: 'modeInit', flags: G.flags.map(f => f.pos) }); }
+  G.flags = []; G.tags = [];
   G.running = true; G.paused = false;
   popup(`${MAPS[W.id].name} — ${MODES[G.mode].name}（オンライン）`, '#fff');
   $('menu').classList.remove('on'); $('endscr').classList.remove('on'); $('pause').classList.remove('on');
@@ -102,7 +137,7 @@ function netStart(m) {
 }
 function netKill(m) {
   if (!G.online) return;
-  const P = G.player, ent = id => id === ON.id ? P : ON.remotes.get(id);
+  const P = G.player, ent = id => id === ON.id ? P : ON.remotes.get(id) || ON.localBots.get(id);
   for (const id in m.k) { const e = ent(+id); if (e) [e.kills, e.deaths, e.score] = m.k[id]; }
   if (m.ts) G.teamScore = { A: m.ts[ON.myTeam || 'A'] || 0, B: m.ts[ON.myTeam === 'A' ? 'B' : 'A'] || 0 };
   const killer = ent(m.killer), victim = ent(m.victim), wd = WPN[m.w] || (m.zone === 'melee' ? null : null);
@@ -112,7 +147,13 @@ function netKill(m) {
   if (m.victim === ON.id) {
     P.alive = false; P.hp = 0; P.respawnT = 3; P.deathT = G.time; P.deathYaw = P.yaw; P.deathCam = 0; P.ads = 0; P.cookT = 0;
     P.killer = killer ? { name: killer.name, wpn: wname } : null;
-  } else if (victim) { victim.alive = false; victim.deathT = G.time; }
+  } else if (victim) { victim.alive = false; victim.hp = 0; victim.deathT = G.time; victim.respawnT = 3.5; }
+  // gun game ladder (server decides levels)
+  for (const id in (m.gg || {})) {
+    const e = ent(+id); if (!e) continue; const lv = m.gg[id], up = lv > (e.gg || 0); e.gg = lv;
+    if (e === P) { const n = WPN[ggWeaponId(P)]; popup(up ? `昇格: ${n.name}（${lv + 1}/${GUNGAME.length}）` : '降格…', up ? '#ffcf5a' : '#ff6a5a'); if (up) sfxUAV(); setTimeout(() => { if (G.online && P.alive) ggEquip(P); }, 150); }
+    else if (e.netBot) ggEquip(e);
+  }
   if (m.killer === ON.id) {
     P.hitT = G.time; P.hitKill = true; sfxHit(true);
     popup(`+${m.pts}`, '#ffcf5a'); if (m.zone === 'head') popup('ヘッドショット', '#fff'); if (m.zone === 'melee') popup('ナイフキル', '#fff');
@@ -122,12 +163,12 @@ function netEnd(m) {
   if (!G.online) return;
   G.over = true;
   const P = G.player, team = MODES[G.mode].team;
-  for (const q of m.players) { const e = q.id === ON.id ? P : ON.remotes.get(q.id); if (e) { e.kills = q.kills; e.deaths = q.deaths; e.score = q.score; } }
+  for (const q of m.players) { const e = q.id === ON.id ? P : ON.remotes.get(q.id) || ON.localBots.get(q.id); if (e) { e.kills = q.kills; e.deaths = q.deaths; e.score = q.score; } }
   setTimeout(() => {
     if (document.exitPointerLock) document.exitPointerLock();
     let title, win;
     if (team) { win = m.winner === ON.myTeam; title = m.winner ? (win ? '勝利' : '敗北') : '引き分け'; }
-    else { win = m.winner === ON.id; title = win ? '勝利' : '敗北'; }
+    else { win = m.winner === ON.id; title = win ? '勝利' : '敗北'; const w = m.players.find(q => q.id === m.winner); if (w && !win) title = `敗北 — 勝者 ${w.name}`; }
     const ts = m.ts || {}, mine = ON.myTeam, other = mine === 'A' ? 'B' : 'A';
     $('endTitle').textContent = title; $('endTitle').style.color = win ? 'var(--acc)' : '#ff6a5a';
     $('endSub').textContent = `${MAPS[W.id].name} ${MODES[G.mode].name}（オンライン）` + (team ? ` — 味方 ${ts[mine] || 0} : 敵 ${ts[other] || 0}` : '');
@@ -138,16 +179,19 @@ function netEnd(m) {
   }, 1200);
 }
 // called from spawnEnt for the local player
-function netOnSpawn(p) { netSend({ t: 'spawn', pos: p.pos }); }
+function netOnSpawn(e) { netSend({ t: 'spawn', id: e.netBot ? e.netId : 0, pos: e.pos }); }
 // online: no lethals / tacticals / scorestreaks / class hot-swap (guns + knife only for now)
 function netFilter(a) { a.lethalP = a.lethalHeld = a.tacP = false; a.streakP = -1; a.classP = false; }
+const ON_MODES = ['ffa', 'tdm', 'dom', 'kc', 'gun'];
 // hit claims are aggregated per target per frame (shotgun pellets -> one message)
 function netClaim(e, dmg, src, d, zone, dir) {
-  const k = e.netId, c = ON.pend.get(k) || { dmg: 0, zone: null, w: d ? WIDS.find(id => WPN[id] === d) || '' : '', o: eyePos(src), d: dir ? dir.slice() : [0, 0, -1] };
+  if (zone === 'explosive' || zone === 'fall') return; // not supported online yet
+  const by = src.netBot ? src.netId : 0, k = by + ':' + e.netId;
+  const c = ON.pend.get(k) || { target: e.netId, by, dmg: 0, zone: null, w: d ? WIDS.find(id => WPN[id] === d) || '' : (zone === 'melee' ? 'knife' : ''), o: src.netBot ? botEye(src) : eyePos(src), d: dir ? dir.slice() : [0, 0, -1] };
   c.dmg += dmg; if (zone === 'head' || !c.zone || zone === 'melee') c.zone = zone; ON.pend.set(k, c);
-  src.hitT = G.time; src.hitKill = false; sfxHit(false);
+  if (src.isPlayer) { src.hitT = G.time; src.hitKill = false; sfxHit(false); }
 }
-function netShot(o, e, kind, sup) { netSend({ t: 'shot', o: o.map(v => +v.toFixed(2)), e: e.map(v => +v.toFixed(2)), k: kind, s: sup ? 1 : 0 }); }
+function netShot(o, e, kind, sup, id) { netSend({ t: 'shot', id: id || 0, o: o.map(v => +v.toFixed(2)), e: e.map(v => +v.toFixed(2)), k: kind, s: sup ? 1 : 0 }); }
 const NOACT = { mx: 0, my: 0, lookX: 0, lookY: 0, mouseX: 0, mouseY: 0, fire: false, fireP: false, ads: false, swapTo: -1, streakP: -1 };
 // per frame (also while the pause menu is open)
 function netTick(dt) {
@@ -156,9 +200,9 @@ function netTick(dt) {
   ON.pingT -= dt; if (ON.pingT <= 0) { ON.pingT = 1; netSend({ t: 'ping', c: tl }); }
   G.timeLeft = Math.max(0, ON.endAt - srvNow);
   // flush hit claims (lag compensation: tell the server what time we were looking at)
-  for (const [id, c] of ON.pend) {
-    const it = ON.interp.get(id), vt = srvNow - (it ? it.delay : 0.05);
-    netSend({ t: 'hit', target: id, dmg: +c.dmg.toFixed(1), zone: c.zone, w: c.w, vt, o: c.o.map(v => +v.toFixed(3)), d: c.d.map(v => +v.toFixed(4)) });
+  for (const c of ON.pend.values()) {
+    const it = ON.interp.get(c.target), vt = c.by || !it ? srvNow - 0.02 : srvNow - it.delay; // bots on the host see the latest positions
+    netSend({ t: 'hit', target: c.target, by: c.by, dmg: +c.dmg.toFixed(1), zone: c.zone, w: c.w, vt, o: c.o.map(v => +v.toFixed(3)), d: c.d.map(v => +v.toFixed(4)) });
   }
   ON.pend.clear();
   // upload own state every frame (capped at 60/s)
@@ -167,6 +211,10 @@ function netTick(dt) {
     ON.sendAcc = 0;
     const st = P.stance === 'prone' || P.diving ? 'prone' : P.stance === 'crouch' || P.slideT > 0 ? 'crouch' : 'stand';
     ON.ws.send(NET.encodeSnapshot(srvNow, 0, [{ id: ON.id, pos: P.pos, yaw: P.yaw, pitch: P.pitch, stance: st, alive: P.alive, ads: P.ads, sprint: P.sprint, hp: P.hp, wpnIdx: Math.max(0, WIDS.indexOf(curW(P).id)) }]));
+    if (ON.isHost && G.bots.length) {
+      const bb = NET.encodeSnapshot(srvNow, 0, G.bots.map(b => ({ id: b.netId, pos: b.pos, yaw: b.yaw, pitch: b.pitch || 0, stance: b.stance || 'stand', alive: b.alive, ads: 0, sprint: false, hp: b.hp, wpnIdx: Math.max(0, WIDS.indexOf(Object.keys(WPN).find(k => WPN[k] === b.wd) || 'ar94')) })));
+      new DataView(bb).setUint8(0, 4); ON.ws.send(bb);
+    }
   }
   // remote players from the interpolation buffers
   for (const [id, b] of ON.remotes) {
@@ -201,29 +249,38 @@ function buildOnline() {
     el.querySelectorAll('input').forEach(i => i.onkeydown = e => e.stopPropagation());
     return;
   }
-  const host = L.host === ON.id, S = L.settings, team = S.mode === 'tdm';
-  h += `<div style="display:flex;align-items:baseline;gap:18px;margin:6px 0 12px"><div style="font-family:Oswald;font-size:46px;letter-spacing:.25em;color:var(--acc)">${L.code}</div><div style="color:var(--dim);font-size:13px">部屋コード ／ ${L.players.length}/12人 ${L.state === 'play' ? '／ <b style="color:#ff8a6a">試合中</b>' : ''}</div></div>`;
-  const pl = (p, t) => `<div class="brow"><span style="color:${t ? (t === 'A' ? '#5ab0ff' : '#ff6a5a') : '#e8e2d6'}">${p.id === L.host ? '★ ' : ''}${esc(p.name)}${p.id === ON.id ? '（あなた）' : ''}</span></div>`;
-  if (team) {
-    h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">` + ['A', 'B'].map(t => `<div><div class="bgrp" style="color:${t === 'A' ? '#5ab0ff' : '#ff6a5a'}">チーム${t === 'A' ? 'アルファ' : 'ブラボー'}</div>${L.players.filter(p => p.team === t).map(p => pl(p, t)).join('')}${L.state === 'lobby' && ON.myTeam !== t ? `<button class="ghost" data-team="${t}" style="width:auto;margin-top:6px;padding:4px 12px">このチームに移る</button>` : ''}</div>`).join('') + `</div>`;
-  } else h += `<div class="bgrp">プレイヤー</div>` + L.players.map(p => pl(p, null)).join('');
-  h += `<div class="sec">ルール ${host ? '' : '<span style="color:var(--dim);font-size:12px">（ホストが設定）</span>'}</div>`;
-  const dis = host && L.state === 'lobby' ? '' : 'disabled';
-  h += `<div class="tiles">${['ffa', 'tdm'].map(k => `<button class="tile${S.mode === k ? ' on' : ''}" data-mode="${k}" ${dis} style="min-width:200px"><b>${MODES[k].name}</b><i>${MODES[k].short}</i></button>`).join('')}</div>`;
-  h += `<div class="tiles">${['yard', 'downtown', 'outpost', 'village', 'depot', 'random'].map(k => `<button class="tile${S.map === k ? ' on' : ''}" data-map="${k}" ${dis}><b>${k === 'random' ? 'ランダム' : MAPS[k].name}</b></button>`).join('')}</div>`;
-  h += `<div class="row"><label>制限時間</label><select id="onTime" ${dis}>${[300, 600, 900, 1200].map(v => `<option value="${v}" ${S.time === v ? 'selected' : ''}>${v / 60}分</option>`).join('')}</select>
-    <label style="width:auto">目標キル</label><select id="onLimit" ${dis}>${(team ? [30, 50, 75, 100] : [15, 20, 30, 40]).concat([S.limit]).filter((v, i, a) => a.indexOf(v) === i).map(v => `<option value="${v}" ${S.limit === v ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`;
-  h += `<div class="lbl">使用クラス</div><div class="tiles">${CLASSES.list.map((c, i) => `<button class="tile${CLASSES.cur === i ? ' on' : ''}" data-cls="${i}"><b>${esc(c.name)}</b><i>${WPN[c.primary].name}</i></button>`).join('')}</div>`;
-  h += `<div class="row">${host && L.state === 'lobby' ? `<button class="go" id="onStart" style="width:auto;margin:0">試合開始</button>` : L.state === 'play' ? `<button class="go" id="onJoinGame" style="width:auto;margin:0">試合に参加</button>` : `<span style="color:var(--dim)">ホストの開始を待っています…</span>`}
-    <button class="ghost" id="onCac" style="width:auto;margin:0">クラスを編集</button><button class="ghost" id="onLeave" style="width:auto;margin:0">退出</button></div>`;
-  h += `<div class="bnote" style="color:#ff8a6a">${esc(ON.err || '')}</div>`;
+  const host = L.host === ON.id, S = L.settings, team = !!MODES[S.mode].team, edit = host && L.state === 'lobby', dis = edit ? '' : 'disabled';
+  const humans = L.players.length, maxBots = Math.max(0, 18 - humans);
+  h += `<div class="olob-top"><div class="olob-code">${L.code}</div><div class="olob-meta">部屋コード（友達に教えてください） ／ ${humans}/12人${S.bots ? ` ＋ Bot ${Math.min(S.bots, maxBots)}体` : ''} ${L.state === 'play' ? '／ <b style="color:#ff8a6a">試合中</b>' : ''}</div></div>`;
+  const pl = (p, t) => `<div class="olob-p" style="border-left-color:${t ? (t === 'A' ? '#5ab0ff' : '#ff6a5a') : 'var(--line)'}">${p.id === L.host ? '<b class="olob-host">ホスト</b>' : ''}${esc(p.name)}${p.id === ON.id ? '<i>（あなた）</i>' : ''}</div>`;
+  let left = '';
+  if (team) left = ['A', 'B'].map(t => `<div class="olob-team"><div class="bgrp" style="color:${t === 'A' ? '#5ab0ff' : '#ff6a5a'}">チーム${t === 'A' ? 'アルファ' : 'ブラボー'}</div>${L.players.filter(p => p.team === t).map(p => pl(p, t)).join('') || '<div class="olob-empty">—</div>'}${L.state === 'lobby' && ON.myTeam !== t ? `<button class="ghost olob-sm" data-team="${t}">このチームに移る</button>` : ''}</div>`).join('');
+  else left = `<div class="bgrp">プレイヤー</div>` + L.players.map(p => pl(p, null)).join('');
+  if (S.bots) left += `<div class="olob-empty" style="margin-top:8px">＋ Bot ${Math.min(S.bots, maxBots)}体（${DIFFS[S.diff].name}）${team ? ' — 人数の少ないチームに自動で入ります' : ''}</div>`;
+  const M = MODES[S.mode];
+  let right = `<div class="lbl">ゲームモード</div><div class="olob-chips">${ON_MODES.map(k => `<button class="chip${S.mode === k ? ' on' : ''}" data-mode="${k}" ${dis}><b>${MODES[k].name}</b><i>${MODES[k].short}</i></button>`).join('')}</div>
+    <div class="olob-desc">${M.desc}</div>
+    <div class="lbl">マップ</div><div class="olob-chips">${['yard', 'downtown', 'outpost', 'village', 'depot', 'random'].map(k => `<button class="chip${S.map === k ? ' on' : ''}" data-map="${k}" ${dis}><b>${k === 'random' ? 'ランダム' : MAPS[k].name}</b></button>`).join('')}</div>
+    <div class="olob-grid">
+      <label>制限時間</label><select id="onTime" ${dis}>${[300, 600, 900, 1200].map(v => `<option value="${v}" ${S.time === v ? 'selected' : ''}>${v / 60}分</option>`).join('')}</select>
+      <label>目標${M.unit}</label><select id="onLimit" ${dis || (S.mode === 'gun' ? 'disabled' : '')}>${(S.mode === 'gun' ? [GUNGAME.length] : M.limits).concat(S.mode === 'gun' ? [] : [S.limit]).filter((v, i, a) => a.indexOf(v) === i).map(v => `<option value="${v}" ${S.limit === v ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <label>Botの数</label><select id="onBots" ${dis}>${Array.from({ length: 16 }, (_, i) => i).map(v => `<option value="${v}" ${S.bots === v ? 'selected' : ''}>${v ? v + '体' : 'なし'}</option>`).join('')}</select>
+      <label>Botの強さ</label><select id="onDiff" ${dis}>${DIFFS.map((d, i) => `<option value="${i}" ${S.diff === i ? 'selected' : ''}>${d.name}</option>`).join('')}</select>
+    </div>
+    ${host ? '' : '<div class="olob-desc">ルールはホストが決めます。</div>'}`;
+  left += `<div class="lbl" style="margin-top:14px">使用クラス${S.mode === 'gun' ? '（ガンゲームでは使いません）' : ''}</div><div class="olob-cls">${CLASSES.list.map((c, i) => `<button class="olob-c${CLASSES.cur === i ? ' on' : ''}" data-cls="${i}"><b>${esc(c.name)}</b><i>${WPN[c.primary].name}</i></button>`).join('')}</div>`;
+  h += `<div class="olob-body"><div class="olob-left">${left}</div><div class="olob-right">${right}</div></div>`;
+  h += `<div class="olob-foot">${edit ? `<button class="go" id="onStart">試合開始</button>` : L.state === 'play' ? `<button class="go" id="onJoinGame">試合に参加</button>` : `<span class="olob-wait">ホストの開始を待っています…</span>`}
+    <button class="ghost" id="onCac">クラスを編集</button><button class="ghost" id="onLeave">退出</button><span class="olob-err">${esc(ON.err || '')}</span></div>`;
   el.innerHTML = h;
   el.querySelectorAll('[data-team]').forEach(b => b.onclick = () => netSend({ t: 'team', team: b.dataset.team }));
-  el.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => netSend({ t: 'settings', mode: b.dataset.mode, limit: MODES[b.dataset.mode].def }));
+  el.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => netSend({ t: 'settings', mode: b.dataset.mode, limit: b.dataset.mode === 'gun' ? GUNGAME.length : MODES[b.dataset.mode].def }));
   el.querySelectorAll('[data-map]').forEach(b => b.onclick = () => netSend({ t: 'settings', map: b.dataset.map }));
   el.querySelectorAll('[data-cls]').forEach(b => b.onclick = () => { CLASSES.cur = +b.dataset.cls; saveClasses(); buildOnline(); });
-  if ($('onTime')) $('onTime').onchange = e => netSend({ t: 'settings', time: +e.target.value });
-  if ($('onLimit')) $('onLimit').onchange = e => netSend({ t: 'settings', limit: +e.target.value });
+  $('onTime').onchange = e => netSend({ t: 'settings', time: +e.target.value });
+  $('onLimit').onchange = e => netSend({ t: 'settings', limit: +e.target.value });
+  $('onBots').onchange = e => netSend({ t: 'settings', bots: +e.target.value });
+  $('onDiff').onchange = e => netSend({ t: 'settings', diff: +e.target.value });
   if ($('onStart')) $('onStart').onclick = () => netSend({ t: 'start' });
   if ($('onJoinGame')) $('onJoinGame').onclick = () => netSend({ t: 'resync' });
   $('onCac').onclick = () => openCAC();
