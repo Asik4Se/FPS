@@ -4,6 +4,7 @@
 const ON = { ws: null, id: 0, code: '', lobby: null, status: '', err: '', clock: new NET.Clock(), remotes: new Map(), interp: new Map(),
   pend: new Map(), localBots: new Map(), isHost: false, sendAcc: 0, pingT: 0, endAt: 0, myTeam: null, hpSrv: 100, connecting: false, lastSnapT: 0 };
 const WIDS = Object.keys(WPN);
+const others = () => G.online && ON.remotes.size ? G.bots.concat([...ON.remotes.values()]) : G.bots;
 const nowS = () => performance.now() / 1000;
 // server URL: same origin when the page is served by the game server, otherwise the saved URL (e.g. https://xxx.onrender.com)
 const ON_SAME = /^https?:$/.test(location.protocol) && !/claude|anthropic|localhost:0/.test(location.host) && location.host !== '';

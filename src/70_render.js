@@ -38,7 +38,7 @@ function renderFrame() {
   // emissive lamps
   for (const b of W.boxes) if (b.emis) { M4.ident(_m); M4.tr(_m, (b.mn[0] + b.mx[0]) / 2, b.mn[1] - 0.02, (b.mn[2] + b.mx[2]) / 2); M4.sc(_m, b.mx[0] - b.mn[0] - 0.05, 0.03, b.mx[2] - b.mn[2] - 0.05); drawCube(_m, [1, 0.97, 0.85], 1); }
   // bots / zombies
-  for (const b of G.bots) drawBot(b);
+  for (const b of others()) drawBot(b);
   for (const b of G.zombies) drawBot(b);
   drawExtras();
   if (p.alive && !G.menuCam) drawOwnLegs(p);

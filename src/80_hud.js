@@ -50,7 +50,7 @@ function drawHUD(dt) {
     }
     // ---- enemy name under crosshair ----
     _nameT -= dt;
-    if (_nameT <= 0) { _nameT = 0.08; _nameEnt = null; const o = eyePos(p), f = fwdVec(p.camYaw, p.camPitch), wh = rayWorld(o, f, 160); let best = wh ? wh.t : 160; for (const b of G.bots) { if (!b.alive) continue; const r = rayBot(b, o, f, best); if (r) { best = r.t; _nameEnt = b; } } }
+    if (_nameT <= 0) { _nameT = 0.08; _nameEnt = null; const o = eyePos(p), f = fwdVec(p.camYaw, p.camPitch), wh = rayWorld(o, f, 160); let best = wh ? wh.t : 160; for (const b of others()) { if (!b.alive) continue; const r = rayBot(b, o, f, best); if (r) { best = r.t; _nameEnt = b; } } }
     if (_nameEnt && _nameEnt.alive) txt(c, _nameEnt.name, cx, isScoped(p) ? cy + 60 : p.ads > 0.5 ? cy - 34 : cy + 42, 14, '#ff4a3a', 'center', 600);
     // ---- interaction hints ----
     if (w.mag === 0 && w.res > 0 && w.reloadT <= 0) txt(c, `[${K('reload')}] リロード`, cx, cy + 80, 15, '#fff', 'center');
@@ -122,7 +122,7 @@ function drawHUD(dt) {
   }
   if (p.cookT) txt(c, `クッキング ${(3 - p.cookT).toFixed(1)}`, cx, cy + 74, 14, p.cookT > 2 ? '#ff4a3a' : '#ffcf5a', 'center');
   // friendly names
-  if (isTeamMode() && R.VP) for (const b of G.bots) {
+  if (isTeamMode() && R.VP) for (const b of others()) {
     if (!b.alive || b.team !== p.team) continue;
     const sp = project([b.pos[0], b.pos[1] + 2.05, b.pos[2]]); if (!sp) continue;
     const dd = V.dist(b.pos, p.pos); if (dd > 70) continue;
@@ -219,7 +219,7 @@ function drawMinimap(c, p) {
   // allies / enemies
   const uav = G.uavT > 0 || G.vsatT > 0, ms = W.mapScale;
   const dotAt = (x, z, col, r) => { c.fillStyle = col; c.beginPath(); c.arc((x - W.minX) * ms, (z - W.minZ) * ms, r / k, 0, 7); c.fill(); };
-  for (const b of G.bots) {
+  for (const b of others()) {
     if (!b.alive) continue;
     if (b.team && b.team === p.team) { dotAt(b.pos[0], b.pos[2], TEAMC.A, 3.2); continue; }
     const fired = G.time - b.firedT < 1.6 && !b.firedSup, sensed = G.sensors.some(sn => sn.owner === p && V.dist(sn.pos, b.pos) < 15);
