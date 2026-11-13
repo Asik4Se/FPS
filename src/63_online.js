@@ -127,7 +127,7 @@ function netStart(m) {
       G.bots.push(b); G.ents.push(b); ON.localBots.set(info.id, b);
     } else { const r = netMakeRemote(info); r.gg = info.gg || 0; }
   }
-  spawnEnt(P);
+  spawnEnt(P); P.spawnT = G.time;
   for (const b of G.bots) { spawnEnt(b); resetBotAI(b); }
   if (G.mode === 'dom' && ON.isHost) { setupDom(); netSend({ t: 'modeInit', flags: G.flags.map(f => f.pos) }); }
   G.flags = []; G.tags = [];
@@ -182,7 +182,7 @@ function netEnd(m) {
 // called from spawnEnt for the local player
 function netOnSpawn(e) { netSend({ t: 'spawn', id: e.netBot ? e.netId : 0, pos: e.pos }); }
 // online: no lethals / tacticals / scorestreaks / class hot-swap (guns + knife only for now)
-function netFilter(a) { a.lethalP = a.lethalHeld = a.tacP = false; a.streakP = -1; a.classP = false; }
+function netFilter(a) { a.lethalP = a.lethalHeld = a.tacP = false; a.streakP = -1; }
 const ON_MODES = ['ffa', 'tdm', 'dom', 'kc', 'gun'];
 // hit claims are aggregated per target per frame (shotgun pellets -> one message)
 function netClaim(e, dmg, src, d, zone, dir) {

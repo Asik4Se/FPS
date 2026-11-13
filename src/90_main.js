@@ -153,6 +153,7 @@ function frame(now) {
   _sndBudget = 0;
   if (a.pauseP && G.running && !G.over) { if (G.paused) resume(); else pauseGame(); }
   if (G.online) netFilter(a);
+  if (a.classP && G.running && !G.over && !G.paused && !['zombies', 'gun', 'range'].includes(G.mode)) pauseGame(); // K: class change
   if (G.running && !G.paused) {
     G.time += dt;
     if (!G.online && !['range', 'zombies'].includes(G.mode) && !G.over) { G.timeLeft -= dt; if (G.timeLeft <= 0) { G.timeLeft = 0; endMatch(); } }
@@ -463,11 +464,17 @@ function buildPause() {
   const box = $('pause').querySelector('.box');
   box.innerHTML = `<h2>一時停止</h2><div style="color:var(--dim);font-size:13px;margin-bottom:8px">${MAPS[W.id].name}</div>
     <button class="go" id="bResume">再開</button>
-    ${G.mode === 'zombies' || G.mode === 'gun' || G.online ? '<div style="display:none">' : '<div>'}<div class="sec" style="text-align:left">クラス変更（次のリスポーンで反映）</div>
+    ${G.mode === 'zombies' || G.mode === 'gun' ? '<div style="display:none">' : '<div>'}<div class="sec" style="text-align:left">クラス変更（出撃直後なら即反映、それ以外は次のリスポーンで反映）</div>
     <div class="chips" style="justify-content:center">${CLASSES.list.map((c, i) => chip((G.pendingClass >= 0 ? G.pendingClass : CLASSES.cur) === i, esc(c.name), WPN[c.primary].name, `data-pc="${i}" style="min-width:90px"`)).join('')}</div></div>
     <button class="ghost" id="bPauseOpt">設定</button><button class="ghost" id="bQuit">${G.online ? '試合から抜ける（退出）' : 'メニューに戻る'}</button>`;
   $('bResume').onclick = resume; $('bQuit').onclick = () => { if (G.online) { netLeave(); toMenu(); showPanel('online'); } else toMenu(); }; $('bPauseOpt').onclick = pauseOpt;
-  box.querySelectorAll('[data-pc]').forEach(b => b.onclick = () => { const i = +b.dataset.pc; G.pendingClass = i === CLASSES.cur ? -1 : i; if (!G.player.alive && G.pendingClass >= 0) { } buildPause(); });
+  box.querySelectorAll('[data-pc]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.pc, P = G.player; G.pendingClass = i === CLASSES.cur ? -1 : i;
+    // BO2-style: right after spawning (and before firing) the new class is applied on the spot
+    if (G.pendingClass >= 0 && P.alive && G.time - (P.spawnT || -99) < 6 && G.time - (P.firedT || -99) > G.time - (P.spawnT || 0)) { equipClass(P); popup(`クラス「${CLASSES.list[CLASSES.cur].name}」に変更`, '#fff'); }
+    else if (G.pendingClass >= 0) popup(`次のリスポーンで「${CLASSES.list[G.pendingClass].name}」に変更`, '#cfcac0');
+    buildPause();
+  });
 }
 function pauseOpt() {
   const box = $('pause').querySelector('.box');

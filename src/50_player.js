@@ -69,7 +69,7 @@ function spawnEnt(e) {
     e.breath = 4; e.exhaustT = 0; e.snap = null; e.dmgDirs = []; e.meleeT = 0; e.killer = null; e.fireBuf = 0; e.jumpBuf = 0;
     equipClass(e); e.stamina = hasPerk('ec') ? 8 : 4; e.swapT = 0.2; e.swapTot = 0.2; e.streak = 0;
     e.streakPts = 0; e.awarded = [false, false, false]; e.flashT = 0; e.stunT = 0; e.cookT = 0; e.hp = e.maxHp || 100;
-    e.slideT = 0; e.exhausted = false; e.sprintLock = 0; e.cPend = e.zPend = false; e.proneTrans = 0; e.stanceKick = 0; e.eyeV = 0; e.crawl = 0; e.diving = false; e.diveLand = 0;
+    e.slideT = 0; e.spawnT = G.time; e.exhausted = false; e.sprintLock = 0; e.cPend = e.zPend = false; e.proneTrans = 0; e.stanceKick = 0; e.eyeV = 0; e.crawl = 0; e.diving = false; e.diveLand = 0;
   }
   if (G.online && (e.isPlayer || e.netBot)) netOnSpawn(e);
 }
@@ -97,7 +97,7 @@ const isSniperScope = p => p.alive && optic(curW(p)) === 'scope' && p.ads >= SCO
 function updatePlayer(p, a, dt) {
   if (!p.alive) {
     p.respawnT -= dt; p.deathCam = Math.min(1, p.deathCam + dt * 2);
-    if (p.respawnT <= 0 && !G.over) spawnEnt(p);
+    if (p.respawnT <= 0 && !G.over) { spawnEnt(p); p.spawnT = G.time; }
     return;
   }
   const w = curW(p), d = w.d;
