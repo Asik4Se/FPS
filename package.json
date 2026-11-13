@@ -1,0 +1,11 @@
+{
+  "name": "fps",
+  "version": "1.0.0",
+  "description": "Browser FPS (BO2-style) with online rooms",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "start": "node server/server.js"
+  },
+  "engines": { "node": ">=18" }
+}

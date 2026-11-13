@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: fps
+    runtime: node
+    region: singapore      # 日本から一番近いリージョン（作成後は変更できません）
+    plan: free             # 対戦用には starter 以上を推奨（free は15分無通信で停止します）
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
