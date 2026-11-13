@@ -346,3 +346,5 @@ function loadJSON(k, def) { try { const v = localStorage.getItem(k); return v ? 
 function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
 const SET_DEF = { sens: 5, adsSens: 1.0, padSens: 6, fov: 75, aa: 'pad', vol: 0.7, invertY: false, resScale: 1, autoRes: true, hitInfo: true, fps: false, lowLat: true, desync: false, msaa: true, slideMode: 'hold' };
 let SET = loadJSON('ls_set', SET_DEF);
+if (SET.sensV == null) SET.sensV = SET.sens;        // vertical mouse sensitivity (defaults to the old single value)
+if (SET.padSensV == null) SET.padSensV = SET.padSens;

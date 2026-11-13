@@ -112,10 +112,10 @@ function updatePlayer(p, a, dt) {
   a.mouseX *= stunK; a.mouseY *= stunK; lookMul *= stunK;
   const inv = SET.invertY ? -1 : 1;
   p.yaw -= a.mouseX * SET.sens * 0.00044 * adsScale;
-  p.pitch -= a.mouseY * SET.sens * 0.00044 * adsScale * inv;
+  p.pitch -= a.mouseY * (SET.sensV ?? SET.sens) * 0.00044 * adsScale * inv;
   if (a.pad) {
-    const rate = (1.0 + SET.padSens * 0.45) * (p.ads > 0.5 ? Math.pow(ratio, 0.85) : 1) * lookMul;
-    p.yaw -= a.lookX * rate * dt; p.pitch -= a.lookY * rate * 0.75 * dt * inv;
+    const k = (p.ads > 0.5 ? Math.pow(ratio, 0.85) : 1) * lookMul, rateX = (1.0 + SET.padSens * 0.45) * k, rateY = (1.0 + (SET.padSensV ?? SET.padSens) * 0.45) * k;
+    p.yaw -= a.lookX * rateX * dt; p.pitch -= a.lookY * rateY * 0.75 * dt * inv;
   }
   p.pitch = clamp(p.pitch, -88 * DEG, 88 * DEG);
 

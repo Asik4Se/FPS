@@ -56,18 +56,38 @@ function resume() {
   $('pause').classList.remove('on'); G.paused = false; audioInit(); releaseFocus();
   lockPointer();
 }
+// Pointer lock keeps the cursor fixed in the centre. A failed request (e.g. right after Esc, the browser
+// refuses for ~1 s) is NOT permanent: we show "click to play" and try again on the next click.
+IN.lockFails = 0;
+function lockFailed() {
+  IN.lockFails++;
+  if (IN.lockFails >= 3 || !$('gl').requestPointerLock) { IN.fallback = true; IN.locked = true; } // embedded page that forbids locking: play anyway
+  $('clicktip').textContent = IN.fallback ? 'クリックでマウスを固定（このページでは固定できない場合があります）' : 'クリックでマウスを画面中央に固定';
+  $('clicktip').style.display = G.running && !G.paused ? 'block' : 'none';
+}
 function lockPointer() {
   const cv = $('gl');
-  if (IN.fallback) { IN.locked = true; return; }
-  try { const r = cv.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(() => { try { const r2 = cv.requestPointerLock(); if (r2 && r2.catch) r2.catch(() => { IN.fallback = true; IN.locked = true; }); } catch (e) { IN.fallback = true; IN.locked = true; } }); }
-  catch (e) { IN.fallback = true; IN.locked = true; }
+  if (!cv.requestPointerLock) { lockFailed(); return; }
+  if (document.pointerLockElement === cv) { IN.locked = true; return; }
+  try {
+    const r = cv.requestPointerLock({ unadjustedMovement: true });
+    if (r && r.catch) r.catch(() => { try { const r2 = cv.requestPointerLock(); if (r2 && r2.catch) r2.catch(lockFailed); } catch (e) { lockFailed(); } });
+  } catch (e) { try { cv.requestPointerLock(); } catch (e2) { lockFailed(); } }
 }
 document.addEventListener('pointerlockchange', () => {
-  IN.locked = document.pointerLockElement === $('gl') || IN.fallback;
-  if (!IN.locked && G.running && !G.over && !G.paused && !IN.padActive) pauseGame();
+  const on = document.pointerLockElement === $('gl');
+  if (on) { IN.lockFails = 0; IN.fallback = false; $('clicktip').style.display = 'none'; }
+  IN.locked = on || IN.fallback;
+  if (!on && !IN.fallback && G.running && !G.over && !G.paused && !IN.padActive) pauseGame();
 });
-document.addEventListener('pointerlockerror', () => { IN.fallback = true; IN.locked = true; });
-function pauseGame() { if (!G.running || G.over) return; G.paused = true; buildPause(); $('pause').classList.add('on'); }
+document.addEventListener('pointerlockerror', lockFailed);
+// hide the OS cursor over the game while playing (also covers the fallback mode)
+setInterval(() => {
+  const st = $('stage'), playing = G.running && !G.paused && !G.over, locked = document.pointerLockElement === $('gl');
+  if (st) st.style.cursor = playing ? 'none' : '';
+  $('clicktip').style.display = playing && !locked && !IN.fallback && IN.lockFails > 0 && !IN.padActive ? 'block' : 'none';
+}, 200);
+function pauseGame() { if (!G.running || G.over) return; G.paused = true; $('clicktip').style.display = 'none'; buildPause(); $('pause').classList.add('on'); }
 function endMatch(winnerEnt) {
   if (G.over) return; G.over = true;
   setTimeout(() => {
@@ -359,10 +379,10 @@ function buildCAC() {
 const _sanitize0 = sanitizeClass;
 function buildOpt(target) {
   const el = target || $('p-opt');
-  const NUMLIM = { sens: [0.05, 50, 0.01], adsSens: [0.1, 3, 0.01], padSens: [1, 20, 0.5], fov: [65, 120, 1] };
+  const NUMLIM = { sens: [0.05, 50, 0.01], sensV: [0.05, 50, 0.01], adsSens: [0.1, 3, 0.01], padSens: [1, 20, 0.5], padSensV: [1, 20, 0.5], fov: [65, 120, 1] };
   const sl = (k, label, min, max, step, fmt) => `<div class="row"><label>${label}</label><input type="range" min="${min}" max="${max}" step="${step}" value="${SET[k]}" data-k="${k}">${NUMLIM[k] ? `<input type="number" class="num" min="${NUMLIM[k][0]}" max="${NUMLIM[k][1]}" step="${NUMLIM[k][2]}" value="${SET[k]}" data-n="${k}">` : `<span class="val" id="v_${k}">${fmt ? fmt(SET[k]) : SET[k]}</span>`}</div>`;
   el.innerHTML = `<h2>設定 <b>//</b></h2><div class="desc">変更は自動保存されます。</div>
-  ${sl('sens', 'マウス感度', 0.5, 20, 0.05)}${sl('adsSens', 'ADS感度倍率', 0.3, 2, 0.05)}${sl('padSens', 'パッド感度', 1, 14, 1)}
+  ${sl('sens', 'マウス感度（左右）', 0.5, 20, 0.05)}${sl('sensV', 'マウス感度（上下）', 0.5, 20, 0.05)}${sl('adsSens', 'ADS感度倍率', 0.3, 2, 0.05)}${sl('padSens', 'パッド感度（左右）', 1, 14, 1)}${sl('padSensV', 'パッド感度（上下）', 1, 14, 1)}
   ${sl('fov', '視野角 (FOV)', 65, 120, 1)}${sl('vol', '音量', 0, 1, 0.05, v => Math.round(v * 100))}${sl('resScale', '描画解像度', 0.5, 1, 0.05, v => Math.round(v * 100) + '%')}
   <div class="row"><label>自動解像度（60fps維持）</label><input type="checkbox" id="autoRes" ${SET.autoRes ? 'checked' : ''}></div>
   <div class="row"><label>エイムアシスト</label><select id="aa"><option value="pad">パッドのみ（推奨）</option><option value="all">マウスでも有効</option><option value="off">オフ</option></select></div>
@@ -456,7 +476,7 @@ function pauseOpt() {
 }
 $('bAgain').onclick = startGame;
 $('bEndMenu').onclick = () => { const wasOnline = G.online; G.online = false; $('bAgain').style.display = ''; $('bEndMenu').textContent = 'メニューに戻る'; toMenu(); if (wasOnline || ON.code) showPanel('online'); };
-$('gl').addEventListener('click', () => { if (G.running && !G.paused && !IN.locked) lockPointer(); });
+$('gl').addEventListener('click', () => { if (G.running && !G.paused && document.pointerLockElement !== $('gl')) lockPointer(); });
 
 // ---------- boot ----------
 function boot() {
