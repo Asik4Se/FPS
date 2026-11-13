@@ -676,6 +676,7 @@ function buildLab() {
   pk('jug', 12, -32.8, 0); pk('speed', 36, 9, 0); pk('dtap', -30, 32.8, 0); pk('rev', -38.5, 9, 1);
   W.boxLocs = [{ pos: [-10, 0, -15.5], zone: 'B' }, { pos: [24, 0, -6], zone: 'C' }, { pos: [30, 0, -18], zone: 'F' }, { pos: [-30, 0, 27], zone: 'G' }];
   W.buys.push({ type: 'pap', pos: [8, 0, 32.3] });
+  for (const [x, z] of [[-9.5, -2], [6, 26], [26, -14], [-22, 26]]) { Bc(x, z, 1.2, 0.7, 0.8, [0.22, 0.30, 0.20]); W.buys.push({ type: 'ammo', pos: [x, 0, z] }); }
   for (const b of W.buys) {
     if (b.type === 'perk') { const c = ZPERKS[b.perk].col; b.body = Bc(b.pos[0], b.pos[2], b.rot ? 0.9 : 1.2, b.rot ? 1.2 : 0.9, 2.2, c.map(v => v * 0.55)); }
     if (b.type === 'pap') b.body = Bc(b.pos[0], b.pos[2], 2.2, 1.4, 1.6, [0.25, 0.22, 0.30]);

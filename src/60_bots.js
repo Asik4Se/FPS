@@ -100,17 +100,24 @@ function rigParts(b) {
   M4.tr(_pm, 0, lerp(P.pel, 0.22, pr), 0); M4.rx(_pm, -Math.PI / 2 * pr);
   // legs
   const walk = Math.sin(b.walkT || 0), amp = b.isZombie ? (b.kind === 'sprint' ? 0.8 : 0.45) : P.prone > 0.5 ? 0.18 : P.hip > 0.5 ? 0.25 : 0.6;
+  // zombie climb (window / obstacle): one knee up, then the other, body pitched forward
+  const ck = b.isZombie && b.climbK != null && b.alive ? b.climbK : null;
+  // zombie attack: wind up (arms raised) then slam down
+  const sk = b.isZombie && b.alive && b.swingT != null ? (G.time - b.swingT) / 0.5 : 9;
   for (const side of [-1, 1]) {
     M4.copy(_pl, _pm); M4.tr(_pl, side * 0.11, 0, 0);
     const sw = walk * amp * side;
-    M4.rx(_pl, P.hip + sw + (pr > 0.5 ? 0 : 0)); if (pr > 0.5) M4.rz(_pl, side * 0.12);
+    const climbHip = ck == null ? 0 : (side > 0 ? Math.sin(Math.min(1, ck * 1.6) * Math.PI) * 1.35 : Math.sin(clamp((ck - 0.3) * 1.6, 0, 1) * Math.PI) * 1.2);
+    M4.rx(_pl, P.hip + (ck == null ? sw : -climbHip)); if (pr > 0.5) M4.rz(_pl, side * 0.12);
     push(_pl, { z: 'uleg', c: [0, -0.21, 0], s: [0.18, 0.42, 0.21], k: 'pants' });
-    M4.tr(_pl, 0, -0.42, 0); M4.rx(_pl, -(P.knee + Math.max(0, -sw) * 0.8));
+    M4.tr(_pl, 0, -0.42, 0); M4.rx(_pl, -(P.knee + (ck == null ? Math.max(0, -sw) * 0.8 : -climbHip * 1.4)));
     push(_pl, { z: 'lleg', c: [0, -0.23, 0], s: [0.16, 0.46, 0.19], k: 'boots' });
     push(_pl, { c: [0, -0.44, -0.07], s: [0.15, 0.08, 0.28], k: 'boots', deco: 1 });
   }
   // upper body
-  M4.copy(_pa, _pm); M4.rx(_pa, -(P.torso + (b.isZombie ? 0.35 : 0)));
+  const atkLean = sk < 1 ? (sk < 0.45 ? -0.15 * (sk / 0.45) : 0.45 * Math.sin(clamp((sk - 0.45) / 0.55, 0, 1) * Math.PI)) : 0;
+  const climbLean = ck == null ? 0 : 0.7 * Math.sin(ck * Math.PI);
+  M4.copy(_pa, _pm); M4.rx(_pa, -(P.torso + (b.isZombie ? 0.35 + atkLean + climbLean : 0)));
   for (const part of RIG_UP) {
     if (b.isZombie && (part.k === 'vest' || part.k === 'helmet' || part.k === 'visor')) continue;
     if (part.head) { M4.copy(_pk, _pa); M4.tr(_pk, 0, 0.55, 0); M4.rx(_pk, pr * 1.15); M4.tr(_pk, 0, -0.55, 0); push(_pk, part); }
@@ -118,7 +125,9 @@ function rigParts(b) {
   }
   // arms (aim pitch; prone arms point forward along the ground)
   M4.copy(_pk, _pa); M4.tr(_pk, 0, 0.42, 0);
-  const armP = b.isZombie ? (b.kind === 'walk' ? 1.25 : 0.55 + Math.sin(b.walkT || 0) * 0.35) : (b.pitch || 0) + P.torso * 0.9 + pr * (Math.PI / 2 - 0.12);
+  let armP = b.isZombie ? (b.kind === 'walk' ? 1.25 : 0.55 + Math.sin(b.walkT || 0) * 0.35) : (b.pitch || 0) + P.torso * 0.9 + pr * (Math.PI / 2 - 0.12);
+  if (b.isZombie && sk < 1) armP = sk < 0.45 ? lerp(armP, -0.55, smooth(sk / 0.45)) : lerp(-0.55, 2.0, smooth(clamp((sk - 0.45) / 0.25, 0, 1))) * (sk > 0.8 ? 1 - (sk - 0.8) / 0.2 * 0.4 : 1);
+  if (ck != null) armP = ck < 0.5 ? lerp(1.35, 1.75, ck * 2) : lerp(1.75, 2.6, (ck - 0.5) * 2); // reach forward, then push down on the ledge
   M4.rx(_pk, armP);
   for (const part of RIG_ARM) { if (part.gun && (b.isZombie || (b.wd && b.wd.melee))) continue; push(_pk, part); }
   b._rigT = G.time;

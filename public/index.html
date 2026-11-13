@@ -1167,6 +1167,7 @@ function buildLab() {
   pk('jug', 12, -32.8, 0); pk('speed', 36, 9, 0); pk('dtap', -30, 32.8, 0); pk('rev', -38.5, 9, 1);
   W.boxLocs = [{ pos: [-10, 0, -15.5], zone: 'B' }, { pos: [24, 0, -6], zone: 'C' }, { pos: [30, 0, -18], zone: 'F' }, { pos: [-30, 0, 27], zone: 'G' }];
   W.buys.push({ type: 'pap', pos: [8, 0, 32.3] });
+  for (const [x, z] of [[-9.5, -2], [6, 26], [26, -14], [-22, 26]]) { Bc(x, z, 1.2, 0.7, 0.8, [0.22, 0.30, 0.20]); W.buys.push({ type: 'ammo', pos: [x, 0, z] }); }
   for (const b of W.buys) {
     if (b.type === 'perk') { const c = ZPERKS[b.perk].col; b.body = Bc(b.pos[0], b.pos[2], b.rot ? 0.9 : 1.2, b.rot ? 1.2 : 0.9, 2.2, c.map(v => v * 0.55)); }
     if (b.type === 'pap') b.body = Bc(b.pos[0], b.pos[2], 2.2, 1.4, 1.6, [0.25, 0.22, 0.30]);
@@ -1648,7 +1649,7 @@ function spawnEnt(e) {
     e.breath = 4; e.exhaustT = 0; e.snap = null; e.dmgDirs = []; e.meleeT = 0; e.killer = null; e.fireBuf = 0; e.jumpBuf = 0;
     equipClass(e); e.stamina = hasPerk('ec') ? 8 : 4; e.swapT = 0.2; e.swapTot = 0.2; e.streak = 0;
     e.streakPts = 0; e.awarded = [false, false, false]; e.flashT = 0; e.stunT = 0; e.cookT = 0; e.hp = e.maxHp || 100;
-    e.slideT = 0; e.cPend = e.zPend = false; e.proneTrans = 0; e.stanceKick = 0; e.eyeV = 0; e.crawl = 0; e.diving = false; e.diveLand = 0;
+    e.slideT = 0; e.exhausted = false; e.sprintLock = 0; e.cPend = e.zPend = false; e.proneTrans = 0; e.stanceKick = 0; e.eyeV = 0; e.crawl = 0; e.diving = false; e.diveLand = 0;
   }
   if (G.online && (e.isPlayer || e.netBot)) netOnSpawn(e);
 }
@@ -1738,9 +1739,13 @@ function updatePlayer(p, a, dt) {
   if (a.jumpP) p.jumpBuf = 0.13;
   p.jumpBuf = Math.max(0, p.jumpBuf - dt);
   p.coyote = p.onGround ? 0.1 : Math.max(0, p.coyote - dt);
+  if (p.diving || p.diveLand > 0) p.jumpBuf = 0; // a dive cannot be cancelled
   if (p.jumpBuf > 0 && !p.mantle) {
     if (p.slideT > 0) { // slide-cancel jump keeps momentum
       endSlide(p); if (setStance(p, 'stand')) { p.vel[1] = JUMP_V; p.onGround = false; sfxJump(); } p.jumpBuf = 0;
+    }
+    else if (p.stance === 'crouch' && G.time - (p.slideEndT || -9) < 0.45 && p.onGround) { // just after a slide: jump straight out of it
+      if (setStance(p, 'stand')) { p.vel[1] = JUMP_V; p.onGround = false; sfxJump(); } p.jumpBuf = 0;
     }
     else if (p.stance === 'prone') { changeStance(p, 'crouch'); p.jumpBuf = 0; }
     else if (p.stance === 'crouch') { changeStance(p, 'stand'); p.jumpBuf = 0; }
@@ -1764,15 +1769,18 @@ function updatePlayer(p, a, dt) {
   // ---------- sprint (press or hold Shift + forward) ----------
   const maxSt = hasPerk('ec') ? 8 : 4;
   const wantAds = a.ads && p.swapT <= 0 && p.meleeT <= 0 && !p.mantle && (w.reloadT <= 0 || w.shellMode) && !p.diving && p.proneTrans <= 0 && p.crawl < 0.5;
-  const canSprintNow = a.my > 0.5 && p.stamina > 0.3 && !a.ads && p.ads < 0.3 && !p.holding && !(p.slideT > 0) && !p.diving && !p.cPend && !p.zPend && p.diveLand <= 0;
+  p.sprintLock = Math.max(0, (p.sprintLock || 0) - dt);
+  const canSprintNow = a.my > 0.5 && p.sprintLock <= 0 && !p.exhausted && p.stamina > 0.3 && !a.ads && p.ads < 0.3 && !p.holding && !(p.slideT > 0) && !p.diving && !p.cPend && !p.zPend && p.diveLand <= 0;
   if (!p.sprint && canSprintNow && (a.sprintP || (a.sprintHeld && p.stance === 'stand'))) {
     if (p.stance !== 'stand') changeStance(p, 'stand');
     if (p.stance === 'stand') p.sprint = true; // reloading continues while sprinting
   }
   const stopSprint = () => { if (p.sprint) { p.sprint = false; p.sprintOutT = d.sprintOut; } };
-  if (p.sprint && !p.cPend && !p.zPend && (a.my < 0.5 || p.stamina <= 0 || wantAds || p.stance !== 'stand' || p.fireBuf > 0)) stopSprint();
+  if (p.sprint && p.stamina <= 0) { stopSprint(); p.exhausted = true; p.sprintLock = 1.0; }
+  if (p.sprint && !p.cPend && !p.zPend && (a.my < 0.5 || wantAds || p.stance !== 'stand' || p.fireBuf > 0)) stopSprint();
   p.sprintDur = p.sprint ? (p.sprintDur || 0) + dt : 0;
   if (p.sprint) p.stamina = Math.max(0, p.stamina - dt);
+  else if (p.exhausted) { p.stamina = Math.min(maxSt, p.stamina + dt * maxSt / 1.0); if (p.stamina >= maxSt && p.sprintLock <= 0) p.exhausted = false; }
   else p.stamina = Math.min(maxSt, p.stamina + dt * 1.0);
   p.sprintOutT = Math.max(0, p.sprintOutT - dt);
 
@@ -1966,7 +1974,7 @@ function startSlide(p, fwd, d) {
   p.sprint = false; p.sprintOutT = 0.12;
   setStance(p, 'crouch'); p.h = 1.05; p.stanceKick = 1; p.stanceDir = 1; sfxSlide();
 }
-function endSlide(p) { if (!(p.slideT > 0)) return; p.slideT = 0; p.slideCD = 0.45; if (p.stance === 'crouch') p.h = STANCE.crouch.h; }
+function endSlide(p) { if (!(p.slideT > 0)) return; p.slideT = 0; p.slideEndT = G.time; p.slideCD = 0.45; if (p.stance === 'crouch') p.h = STANCE.crouch.h; }
 function startDive(p, fwd, d) {
   if (!p.onGround) return;
   const hs = Math.max(Math.hypot(p.vel[0], p.vel[2]), 6.5);
@@ -2010,7 +2018,7 @@ function playerShoot(p, w) {
     const f2 = coneDir(f, spread * DEG), e0 = V.add(eyePos(p), V.mul(f2, 0.6));
     const sp = d.proj === 'plasma' ? 70 : 42;
     const zr = G.zm ? Math.max(1, G.zm.round) : 1;
-    G.projs.push({ type: d.proj, pos: e0, start: e0.slice(), vel: V.mul(f2, sp), owner: p, team: p.team, t: 0, dmg: d.proj === 'plasma' ? (w.up ? 2500 : 1100) : d === WPN.m32 ? (300 + 150 * zr) * (w.up ? 2 : 1) : 0, def: d === WPN.m32 ? d : null });
+    G.projs.push({ type: d.proj, pos: e0, start: e0.slice(), vel: V.mul(f2, sp), owner: p, team: p.team, t: 0, dmg: d.proj === 'plasma' ? (G.zm ? (w.up ? 5000 : 2200) : (w.up ? 2500 : 1100)) : d === WPN.m32 ? (600 + 260 * zr) * (w.up ? 2 : 1) : 0, def: d === WPN.m32 ? d : null });
     if (d.proj === 'plasma') sfxPlasma(0);
     p.recoilP += d.recoil; alertBots(p, d, false);
     return;
@@ -2593,14 +2601,15 @@ const zmKnifeDmg = () => 150 + (G.zm ? Math.max(0, G.zm.round - 1) * 30 : 0);
 // zombie-mode damage profile (separate from multiplayer, like the original):
 // per-bullet body damage and headshot multiplier. Round 1 zombie = 150 HP, +100 per round up to 9, then x1.1 per round.
 const ZDMG = {
-  vx50: [1000, 4], bls7: [900, 4], as50x: [600, 3.5], dr90: [450, 3.5], svu: [400, 3.5],
-  ar94: [150, 3], m8: [170, 3], sw56: [130, 3], ls60: [160, 2.5],
-  sm7: [105, 3], msc: [115, 3], pd50: [95, 3],
-  r870: [110, 1.5], sg12: [80, 1.5], ex9: [70, 1.5],
-  p9: [60, 3], b23: [70, 3],
-  rpd: [180, 2.5], ksg: [130, 1.5], python: [500, 2.5],
+  vx50: [1400, 4], bls7: [1250, 4], as50x: [850, 3.5], dr90: [650, 3.5], svu: [560, 3.5],
+  ar94: [210, 3], m8: [240, 3], sw56: [185, 3], ls60: [225, 2.5],
+  sm7: [150, 3], msc: [160, 3], pd50: [135, 3],
+  r870: [155, 1.5], sg12: [115, 1.5], ex9: [100, 1.5],
+  p9: [85, 3], b23: [100, 3],
+  // mystery-box exclusives hit much harder
+  rpd: [420, 3], ksg: [300, 1.8], python: [1400, 3],
 };
-const ZDMG_CLS = { sniper: [500, 3.5], ar: [140, 3], lmg: [150, 2.5], smg: [100, 3], sg: [130, 1.5], pistol: [60, 3] };
+const ZDMG_CLS = { sniper: [700, 3.5], ar: [200, 3], lmg: [210, 2.5], smg: [140, 3], sg: [180, 1.5], pistol: [85, 3] };
 function zmWeaponDamage(d, zone, dist, att) {
   const id = d._zid || (d._zid = Object.keys(WPN).find(k => WPN[k] === d) || '-');
   const [base, head] = ZDMG[id] || ZDMG_CLS[d.cls] || [100, 2];
@@ -2610,6 +2619,27 @@ function zmWeaponDamage(d, zone, dist, att) {
   if (att && att.has('sup')) k *= 0.9;
   const zm = zone === 'head' ? head : zone === 'neck' ? Math.max(1.5, head * 0.5) : zone === 'upper' || zone === 'lower' ? 1 : 0.85;
   return base * k * zm;
+}
+// find the top of the obstacle just ahead and climb onto it (cars, crates, containers up to ~2.8 m)
+function zmTryVault(b, dx, dz, wantUp) {
+  const q = [b.pos[0] + dx * 0.55, 0, b.pos[2] + dz * 0.55];
+  const hits = boxesNear(q[0], q[2], 1.2).filter(bx => !(bx.ground || bx.flat || bx.noRay || bx.invis) && q[0] >= bx.mn[0] - 0.2 && q[0] <= bx.mx[0] + 0.2 && q[2] >= bx.mn[2] - 0.2 && q[2] <= bx.mx[2] + 0.2).sort((x, y) => x.mn[1] - y.mn[1]);
+  let top = b.pos[1];
+  for (const bx of hits) if (bx.mn[1] <= top + 0.6) top = Math.max(top, bx.mx[1]); // stacked parts (car body + cabin, crate on crate)
+  const rise = top - b.pos[1];
+  if (rise < 0.4 || rise > 2.9 || (!wantUp && rise > 1.3)) return false;
+  for (const f of [0.95, 1.4, 0.65, 1.9]) {
+    const land = [b.pos[0] + dx * f, top, b.pos[2] + dz * f];
+    if (!spaceFree(land, 0.28, 1.7)) continue;
+    b.vault = { a: b.pos.slice(), b: land, t: 0, dur: 0.45 + rise * 0.22 }; b.climbK = 0; b.yaw = Math.atan2(-dx, -dz);
+    return true;
+  }
+  return false;
+}
+function zmAmmoCost(w) {
+  const d = w.d, id = d._zid || (d._zid = Object.keys(WPN).find(k => WPN[k] === d) || '-');
+  const base = ZWONDER.includes(id) ? 2500 : { pistol: 200, smg: 400, ar: 500, lmg: 600, sg: 450, sniper: 750, launcher: 1000 }[d.cls] || 500;
+  return Math.round(base * (w.up ? 3 : 1) * (ZBOX_ONLY.includes(id) ? 1.5 : 1) / 50) * 50;
 }
 function zmCount(r) { return r <= 5 ? [6, 8, 13, 18, 24][r - 1] : Math.min(90, Math.floor(24 + (r - 5) * 6)); }
 function zmHP(r) { return r < 10 ? 150 + 100 * (r - 1) : Math.floor(950 * Math.pow(1.1, r - 9)); }
@@ -2660,7 +2690,7 @@ function zmSpawnOne() {
   const r = z.round, roll = Math.random();
   const sprintP = clamp((r - 4) * 0.13, 0, 0.85), jogP = clamp((r - 2) * 0.25, 0, 1);
   const kind = roll < sprintP ? 'sprint' : roll < sprintP + jogP * (1 - sprintP) ? 'jog' : 'walk';
-  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: { walk: 1.25, jog: 2.7, sprint: 4.7 }[kind] * rand(0.9, 1.1),
+  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: kind === 'sprint' ? BASE_SPEED * 1.5 * rand(0.86, 0.93) : { walk: 1.35, jog: 3.3 }[kind] * rand(0.92, 1.08),
     rise: 0, atkT: 0, walkT: rand(0, 6), yaw: rand(0, 6.28), stance: 'stand', pose: null, pitch: -0.25, skin: pick(ZSKINS), stuckT: 0, lastPos: [0, 0, 0], bob: rand(0, 6) });
   b.vel = [0, 0, 0];
   G.zombies.push(b); G.ents.push(b);
@@ -2712,10 +2742,16 @@ function updateZombies(dt) {
     if (b.rise < 1) { b.rise = Math.min(1, b.rise + dt * 0.9); continue; }
     b.atkT -= dt;
     if (zqWindowZombie(b, dt, P)) continue;
+    if (b.vault) { // climbing up onto a car / crate / container
+      const v = b.vault; v.t += dt / v.dur; const k = Math.min(1, v.t), up = Math.min(1, k * 1.7), fw = clamp((k - 0.4) / 0.6, 0, 1);
+      b.pos = [lerp(v.a[0], v.b[0], fw), lerp(v.a[1], v.b[1], up) + Math.sin(k * Math.PI) * 0.15, lerp(v.a[2], v.b[2], fw)]; b.climbK = k; b.stance = k > 0.2 && k < 0.8 ? 'crouch' : 'stand';
+      if (k >= 1) { b.vault = null; b.climbK = null; b.pos = v.b.slice(); b.vel = [0, 0, 0]; b.stance = 'stand'; }
+      continue;
+    }
     const dx = P.pos[0] - b.pos[0], dz = P.pos[2] - b.pos[2], dist = Math.hypot(dx, dz);
     let mx = 0, mz = 0;
     if (P.alive) {
-      if (dist < 9 && Math.abs(P.pos[1] - b.pos[1]) < 1.6 && walkClear(b.pos, P.pos)) { mx = dx / dist; mz = dz / dist; }
+      if ((dist < 9 && Math.abs(P.pos[1] - b.pos[1]) < 1.6 && walkClear(b.pos, P.pos)) || (dist < 5 && P.pos[1] - b.pos[1] > 0.35)) { mx = dx / dist; mz = dz / dist; }
       else if (z.flow) {
         const [ci, cj] = navCell(b.pos[0], b.pos[2]), gh = W.gh; let best = z.flow[ci * gh + cj], bi = ci, bj = cj;
         for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { const ni = ci + di, nj = cj + dj; if (!navFree(ni, nj)) continue; if (di && dj && (!navFree(ci + di, cj) || !navFree(ci, cj + dj))) continue; const v = z.flow[ni * gh + nj]; if (v < best) { best = v; bi = ni; bj = nj; } }
@@ -2735,11 +2771,12 @@ function updateZombies(dt) {
     b.vel[0] = approach(b.vel[0], mx * spd, 20 * dt); b.vel[2] = approach(b.vel[2], mz * spd, 20 * dt); b.vel[1] -= GRAV * dt;
     const r = moveEntity(b, b.vel[0] * dt, b.vel[1] * dt, b.vel[2] * dt, 0.28, 1.75, 0.46);
     if (r.ground) b.vel[1] = 0;
+    if (r.hitWall && r.ground && ml > 0.1 && P.alive && (P.pos[1] - b.pos[1] > 0.35 || dist > 2)) zmTryVault(b, mx / ml, mz / ml, P.pos[1] - b.pos[1] > 0.35);
     if (ml > 0.1) b.yaw += clamp(angDiff(b.yaw, Math.atan2(-mx, -mz)), -6 * dt, 6 * dt);
     b.walkT += dt * Math.hypot(b.vel[0], b.vel[2]) * 2.0;
     if (z.groanT <= 0 && dist < 22 && Math.random() < 0.15) { z.groanT = rand(0.4, 1.2); const rel = angDiff(P.camYaw, Math.atan2(-(b.pos[0] - P.pos[0]), -(b.pos[2] - P.pos[2]))); sfxGroan(dist, clamp(-Math.sin(rel), -1, 1)); }
     b.stuckT += dt;
-    if (b.stuckT > 3) { if (V.dist2(b.pos, b.lastPos) < 0.5 && dist > 3) { b.pos[1] = 0; b.vel = [0, 0, 0]; } b.stuckT = 0; b.lastPos = b.pos.slice(); }
+    if (b.stuckT > 3) { if (V.dist2(b.pos, b.lastPos) < 0.5 && dist > 3) { b.vel = [0, 0, 0]; } b.stuckT = 0; b.lastPos = b.pos.slice(); }
   }
   // cleanup corpses
   for (const b of G.zombies) if (!b.alive && G.time - b.deathT > 2.6) b.gone = true;
@@ -2775,6 +2812,11 @@ function zmNear() {
       return { kind: 'wall', b, cost, has, text: has ? `[F] ${has.d.name}${has.up ? '改' : ''} の弾薬（${cost}）` : `[F] ${WPN[b.wid].name} を購入（${cost}）` };
     }
     if (b.type === 'perk' && dist < 1.9 && z.parts && !z.power) return { kind: 'info', text: `${ZPERKS[b.perk].name}：電源が入っていない` };
+    if (b.type === 'ammo' && dist < 1.9) {
+      const w = curW(P), max = w.d.res * (w.up ? 2 : 1), c = zmAmmoCost(w);
+      if (w.d.melee || !max) return { kind: 'info', text: '弾薬ボックス' };
+      return w.res >= max && w.mag >= w.magMax ? { kind: 'info', text: `弾薬ボックス — ${w.d.name}${w.up ? '改' : ''} は満タン` } : { kind: 'ammo', b, cost: c, text: `[F] 弾薬ボックス — ${w.d.name}${w.up ? '改' : ''} の弾を補充（${c}）` };
+    }
     if (b.type === 'pap' && dist < 2.2 && z.parts && !(z.power && z.fuseIn >= 3)) return { kind: 'info', text: `改造台は停止中（電源 ${z.power ? '○' : '×'}／ヒューズ ${z.fuseIn}/3）` };
     if (b.type === 'perk' && dist < 1.9) { const pk = ZPERKS[b.perk]; return { kind: 'perk', b, cost: pk.cost, text: z.perks.has(b.perk) ? `${pk.name}（所持済み）` : `[F] ${pk.name}を飲む（${pk.cost}）— ${pk.desc}` }; }
     if (b.type === 'pap' && dist < 2.2) { const w = curW(P); return { kind: 'pap', b, cost: 5000, text: w.up ? '改造済み' : `[F] ${w.d.name} を改造（5000）` }; }
@@ -2796,8 +2838,9 @@ function zmGive(P, wid) {
 }
 function zmUse(P) {
   const z = G.zm, n = zmNear(); if (!n || n.kind === 'info' || n.kind === 'window') return;
-  if (!['door', 'wall', 'perk', 'pap', 'box', 'take', 'busy'].includes(n.kind)) { zqUse(P, n); return; }
+  if (!['door', 'wall', 'perk', 'pap', 'box', 'take', 'busy', 'ammo'].includes(n.kind)) { zqUse(P, n); return; }
   const pay = c => { if (z.points < c) { sfxDeny(); popup('ポイントが足りない', '#ff6a5a'); return false; } z.points -= c; sfxBuy(); return true; };
+  if (n.kind === 'ammo') { const w = curW(P); if (pay(n.cost)) { w.res = w.d.res * (w.up ? 2 : 1); w.mag = w.magMax; popup(`${w.d.name} の弾を補充`, '#9fe0ff'); } return; }
   if (n.kind === 'door') { if (pay(n.cost)) { openDoor(n.d); popup('ドアが開いた', '#fff'); G.zm.flowT = 0; } }
   else if (n.kind === 'wall') { if (n.has) { if (n.has.res < n.has.d.res * (n.has.up ? 2 : 1) && pay(n.cost)) n.has.res = n.has.d.res * (n.has.up ? 2 : 1); } else if (pay(n.cost)) zmGive(P, n.b.wid); }
   else if (n.kind === 'perk') {
@@ -2943,12 +2986,12 @@ function zqWindowZombie(b, dt, P) {
   if (b.wst === 'climb') {
     b.climbT += dt / 0.9; const t = Math.min(1, b.climbT);
     b.pos[0] = lerp(w.outside[0], w.inside[0], t); b.pos[2] = lerp(w.outside[2], w.inside[2], t); b.pos[1] = Math.sin(t * Math.PI) * 1.0 + (t > 0.3 && t < 0.7 ? 0.2 : 0);
-    b.stance = t > 0.25 && t < 0.75 ? 'crouch' : 'stand';
-    if (t >= 1) { b.win = null; b.wst = null; b.pos[1] = 0; b.vel = [0, 0, 0]; b.stance = 'stand'; }
+    b.stance = t > 0.25 && t < 0.75 ? 'crouch' : 'stand'; b.climbK = t; b.yaw = Math.atan2(-w.n[0], -w.n[2]);
+    if (t >= 1) { b.win = null; b.wst = null; b.pos[1] = 0; b.vel = [0, 0, 0]; b.stance = 'stand'; b.climbK = null; }
     return true;
   }
-  // tear
-  b.yaw = Math.atan2(w.n[0], w.n[2]);
+  // tear (face into the building: forward = [-sin(yaw), -cos(yaw)] = window normal)
+  b.yaw = Math.atan2(-w.n[0], -w.n[2]);
   const toOut = Math.hypot(w.outside[0] - b.pos[0], w.outside[2] - b.pos[2]);
   if (toOut > 0.25) { const s = Math.min(toOut, b.spd * dt); b.pos[0] += (w.outside[0] - b.pos[0]) / toOut * s; b.pos[2] += (w.outside[2] - b.pos[2]) / toOut * s; b.walkT += dt * b.spd * 2; return true; }
   if (w.boards > 0) {
@@ -3088,11 +3131,11 @@ function zwFire(p, w, f) {
       if (t < ft) { ft = t; first = b; }
     }
     if (!first) { const h = rayWorld(eye, f, 45); const end = h ? V.add(eye, V.mul(f, h.t)) : V.add(eye, V.mul(f, 45)); G.tracers.push({ a: mz, b: end, t: 0, life: 0.2, zap: 1 }); if (h) impactFX(end, h.n, { c: [0.5, 0.85, 1] }); return; }
-    const hit = new Set([first]); let cur = first, from = mz; const N = w.up ? 10 : 5;
+    const hit = new Set([first]); let cur = first, from = mz; const N = w.up ? 16 : 8;
     for (let i = 0; i < N && cur; i++) {
       G.tracers.push({ a: from, b: zwChest(cur), t: 0, life: 0.25, zap: 1 }); G.tracers.push({ a: from, b: V.add(zwChest(cur), [rand(-0.3, 0.3), rand(-0.3, 0.3), rand(-0.3, 0.3)]), t: 0, life: 0.18, zap: 1 });
       zwKill(cur, p, d); from = zwChest(cur);
-      let nx = null, nd = w.up ? 11 : 8;
+      let nx = null, nd = w.up ? 13 : 10;
       for (const b of zwTargets()) { if (hit.has(b)) continue; const dd = V.dist(zwChest(b), from); if (dd < nd && losClear(from, zwChest(b))) { nd = dd; nx = b; } }
       if (nx) hit.add(nx); cur = nx;
     }
@@ -3100,11 +3143,11 @@ function zwFire(p, w, f) {
   }
   if (d.special === 'grav') {
     sfxBoom(0, 0, true); p.shake = Math.max(p.shake || 0, 0.6);
-    const R = w.up ? 22 : 17, max = w.up ? 24 : 14, cand = [];
+    const R = w.up ? 26 : 20, max = w.up ? 32 : 20, cand = [];
     for (const b of zwTargets()) {
       const c = zwChest(b), v = V.sub(c, eye), L = V.len(v); if (L > R) continue;
       const cos = V.dot(v, f) / (L || 1);
-      if (!(cos > 0.9 || (L < 3.5 && cos > 0.45))) continue;
+      if (!(cos > 0.87 || (L < 4 && cos > 0.4))) continue;
       if (!losClear(eye, c) && !losClear(eye, V.add(c, [0, 0.5, 0]))) continue;
       cand.push([L, b, v]);
     }
@@ -3225,17 +3268,24 @@ function rigParts(b) {
   M4.tr(_pm, 0, lerp(P.pel, 0.22, pr), 0); M4.rx(_pm, -Math.PI / 2 * pr);
   // legs
   const walk = Math.sin(b.walkT || 0), amp = b.isZombie ? (b.kind === 'sprint' ? 0.8 : 0.45) : P.prone > 0.5 ? 0.18 : P.hip > 0.5 ? 0.25 : 0.6;
+  // zombie climb (window / obstacle): one knee up, then the other, body pitched forward
+  const ck = b.isZombie && b.climbK != null && b.alive ? b.climbK : null;
+  // zombie attack: wind up (arms raised) then slam down
+  const sk = b.isZombie && b.alive && b.swingT != null ? (G.time - b.swingT) / 0.5 : 9;
   for (const side of [-1, 1]) {
     M4.copy(_pl, _pm); M4.tr(_pl, side * 0.11, 0, 0);
     const sw = walk * amp * side;
-    M4.rx(_pl, P.hip + sw + (pr > 0.5 ? 0 : 0)); if (pr > 0.5) M4.rz(_pl, side * 0.12);
+    const climbHip = ck == null ? 0 : (side > 0 ? Math.sin(Math.min(1, ck * 1.6) * Math.PI) * 1.35 : Math.sin(clamp((ck - 0.3) * 1.6, 0, 1) * Math.PI) * 1.2);
+    M4.rx(_pl, P.hip + (ck == null ? sw : -climbHip)); if (pr > 0.5) M4.rz(_pl, side * 0.12);
     push(_pl, { z: 'uleg', c: [0, -0.21, 0], s: [0.18, 0.42, 0.21], k: 'pants' });
-    M4.tr(_pl, 0, -0.42, 0); M4.rx(_pl, -(P.knee + Math.max(0, -sw) * 0.8));
+    M4.tr(_pl, 0, -0.42, 0); M4.rx(_pl, -(P.knee + (ck == null ? Math.max(0, -sw) * 0.8 : -climbHip * 1.4)));
     push(_pl, { z: 'lleg', c: [0, -0.23, 0], s: [0.16, 0.46, 0.19], k: 'boots' });
     push(_pl, { c: [0, -0.44, -0.07], s: [0.15, 0.08, 0.28], k: 'boots', deco: 1 });
   }
   // upper body
-  M4.copy(_pa, _pm); M4.rx(_pa, -(P.torso + (b.isZombie ? 0.35 : 0)));
+  const atkLean = sk < 1 ? (sk < 0.45 ? -0.15 * (sk / 0.45) : 0.45 * Math.sin(clamp((sk - 0.45) / 0.55, 0, 1) * Math.PI)) : 0;
+  const climbLean = ck == null ? 0 : 0.7 * Math.sin(ck * Math.PI);
+  M4.copy(_pa, _pm); M4.rx(_pa, -(P.torso + (b.isZombie ? 0.35 + atkLean + climbLean : 0)));
   for (const part of RIG_UP) {
     if (b.isZombie && (part.k === 'vest' || part.k === 'helmet' || part.k === 'visor')) continue;
     if (part.head) { M4.copy(_pk, _pa); M4.tr(_pk, 0, 0.55, 0); M4.rx(_pk, pr * 1.15); M4.tr(_pk, 0, -0.55, 0); push(_pk, part); }
@@ -3243,7 +3293,9 @@ function rigParts(b) {
   }
   // arms (aim pitch; prone arms point forward along the ground)
   M4.copy(_pk, _pa); M4.tr(_pk, 0, 0.42, 0);
-  const armP = b.isZombie ? (b.kind === 'walk' ? 1.25 : 0.55 + Math.sin(b.walkT || 0) * 0.35) : (b.pitch || 0) + P.torso * 0.9 + pr * (Math.PI / 2 - 0.12);
+  let armP = b.isZombie ? (b.kind === 'walk' ? 1.25 : 0.55 + Math.sin(b.walkT || 0) * 0.35) : (b.pitch || 0) + P.torso * 0.9 + pr * (Math.PI / 2 - 0.12);
+  if (b.isZombie && sk < 1) armP = sk < 0.45 ? lerp(armP, -0.55, smooth(sk / 0.45)) : lerp(-0.55, 2.0, smooth(clamp((sk - 0.45) / 0.25, 0, 1))) * (sk > 0.8 ? 1 - (sk - 0.8) / 0.2 * 0.4 : 1);
+  if (ck != null) armP = ck < 0.5 ? lerp(1.35, 1.75, ck * 2) : lerp(1.75, 2.6, (ck - 0.5) * 2); // reach forward, then push down on the ledge
   M4.rx(_pk, armP);
   for (const part of RIG_ARM) { if (part.gun && (b.isZombie || (b.wd && b.wd.melee))) continue; push(_pk, part); }
   b._rigT = G.time;
@@ -4040,6 +4092,7 @@ function drawExtras() {
         for (const [cx, cy, sx, sy] of [[0, 0, 0.9, 0.04], [0, -0.13, 0.5, 0.03], [-0.42, -0.06, 0.04, 0.16], [0.42, -0.02, 0.04, 0.08], [-0.1, -0.24, 0.05, 0.2], [0.2, -0.22, 0.05, 0.16]]) { M4.copy(_m, _b); M4.tr(_m, cx, cy, 0); M4.sc(_m, sx, sy, 0.01); drawCube(_m, chalk, 0.7); }
       }
       if (b.type === 'perk') { const pk = ZPERKS[b.perk], p = b.pos; box([p[0], 1.45, p[2]], b.rot ? [0.92, 0.5, 0.6] : [0.6, 0.5, 0.92], pk.col, 0.8); box([p[0], 2.3, p[2]], [0.5, 0.15, 0.5], pk.col, 1, t); }
+      if (b.type === 'ammo') { const p = b.pos; box([p[0], 0.81, p[2]], [1.22, 0.04, 0.2], [0.9, 0.72, 0.2], 0.5); for (let i = 0; i < 4; i++) box([p[0] - 0.33 + i * 0.22, 0.95, p[2]], [0.07, 0.24, 0.07], [0.85, 0.65, 0.25], 0.35); box([p[0], 1.35 + Math.sin(t * 2) * 0.05, p[2]], [0.12, 0.12, 0.12], [0.5, 1, 0.5], 0.9, t); }
       if (b.type === 'pap') { const p = b.pos; box([p[0], 1.7, p[2]], [1.6, 0.15, 1.0], [0.75, 0.35, 1], 0.5 + 0.4 * Math.sin(t * 3)); box([p[0], 0.9, p[2] - 0.72], [1.4, 0.3, 0.04], [0.75, 0.35, 1], 0.9); }
     }
     const bl = W.boxLocs[G.zm.box];

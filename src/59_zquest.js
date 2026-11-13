@@ -119,12 +119,12 @@ function zqWindowZombie(b, dt, P) {
   if (b.wst === 'climb') {
     b.climbT += dt / 0.9; const t = Math.min(1, b.climbT);
     b.pos[0] = lerp(w.outside[0], w.inside[0], t); b.pos[2] = lerp(w.outside[2], w.inside[2], t); b.pos[1] = Math.sin(t * Math.PI) * 1.0 + (t > 0.3 && t < 0.7 ? 0.2 : 0);
-    b.stance = t > 0.25 && t < 0.75 ? 'crouch' : 'stand';
-    if (t >= 1) { b.win = null; b.wst = null; b.pos[1] = 0; b.vel = [0, 0, 0]; b.stance = 'stand'; }
+    b.stance = t > 0.25 && t < 0.75 ? 'crouch' : 'stand'; b.climbK = t; b.yaw = Math.atan2(-w.n[0], -w.n[2]);
+    if (t >= 1) { b.win = null; b.wst = null; b.pos[1] = 0; b.vel = [0, 0, 0]; b.stance = 'stand'; b.climbK = null; }
     return true;
   }
-  // tear
-  b.yaw = Math.atan2(w.n[0], w.n[2]);
+  // tear (face into the building: forward = [-sin(yaw), -cos(yaw)] = window normal)
+  b.yaw = Math.atan2(-w.n[0], -w.n[2]);
   const toOut = Math.hypot(w.outside[0] - b.pos[0], w.outside[2] - b.pos[2]);
   if (toOut > 0.25) { const s = Math.min(toOut, b.spd * dt); b.pos[0] += (w.outside[0] - b.pos[0]) / toOut * s; b.pos[2] += (w.outside[2] - b.pos[2]) / toOut * s; b.walkT += dt * b.spd * 2; return true; }
   if (w.boards > 0) {
@@ -264,11 +264,11 @@ function zwFire(p, w, f) {
       if (t < ft) { ft = t; first = b; }
     }
     if (!first) { const h = rayWorld(eye, f, 45); const end = h ? V.add(eye, V.mul(f, h.t)) : V.add(eye, V.mul(f, 45)); G.tracers.push({ a: mz, b: end, t: 0, life: 0.2, zap: 1 }); if (h) impactFX(end, h.n, { c: [0.5, 0.85, 1] }); return; }
-    const hit = new Set([first]); let cur = first, from = mz; const N = w.up ? 10 : 5;
+    const hit = new Set([first]); let cur = first, from = mz; const N = w.up ? 16 : 8;
     for (let i = 0; i < N && cur; i++) {
       G.tracers.push({ a: from, b: zwChest(cur), t: 0, life: 0.25, zap: 1 }); G.tracers.push({ a: from, b: V.add(zwChest(cur), [rand(-0.3, 0.3), rand(-0.3, 0.3), rand(-0.3, 0.3)]), t: 0, life: 0.18, zap: 1 });
       zwKill(cur, p, d); from = zwChest(cur);
-      let nx = null, nd = w.up ? 11 : 8;
+      let nx = null, nd = w.up ? 13 : 10;
       for (const b of zwTargets()) { if (hit.has(b)) continue; const dd = V.dist(zwChest(b), from); if (dd < nd && losClear(from, zwChest(b))) { nd = dd; nx = b; } }
       if (nx) hit.add(nx); cur = nx;
     }
@@ -276,11 +276,11 @@ function zwFire(p, w, f) {
   }
   if (d.special === 'grav') {
     sfxBoom(0, 0, true); p.shake = Math.max(p.shake || 0, 0.6);
-    const R = w.up ? 22 : 17, max = w.up ? 24 : 14, cand = [];
+    const R = w.up ? 26 : 20, max = w.up ? 32 : 20, cand = [];
     for (const b of zwTargets()) {
       const c = zwChest(b), v = V.sub(c, eye), L = V.len(v); if (L > R) continue;
       const cos = V.dot(v, f) / (L || 1);
-      if (!(cos > 0.9 || (L < 3.5 && cos > 0.45))) continue;
+      if (!(cos > 0.87 || (L < 4 && cos > 0.4))) continue;
       if (!losClear(eye, c) && !losClear(eye, V.add(c, [0, 0.5, 0]))) continue;
       cand.push([L, b, v]);
     }

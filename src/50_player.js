@@ -64,7 +64,7 @@ function spawnEnt(e) {
     e.breath = 4; e.exhaustT = 0; e.snap = null; e.dmgDirs = []; e.meleeT = 0; e.killer = null; e.fireBuf = 0; e.jumpBuf = 0;
     equipClass(e); e.stamina = hasPerk('ec') ? 8 : 4; e.swapT = 0.2; e.swapTot = 0.2; e.streak = 0;
     e.streakPts = 0; e.awarded = [false, false, false]; e.flashT = 0; e.stunT = 0; e.cookT = 0; e.hp = e.maxHp || 100;
-    e.slideT = 0; e.cPend = e.zPend = false; e.proneTrans = 0; e.stanceKick = 0; e.eyeV = 0; e.crawl = 0; e.diving = false; e.diveLand = 0;
+    e.slideT = 0; e.exhausted = false; e.sprintLock = 0; e.cPend = e.zPend = false; e.proneTrans = 0; e.stanceKick = 0; e.eyeV = 0; e.crawl = 0; e.diving = false; e.diveLand = 0;
   }
   if (G.online && (e.isPlayer || e.netBot)) netOnSpawn(e);
 }
@@ -154,9 +154,13 @@ function updatePlayer(p, a, dt) {
   if (a.jumpP) p.jumpBuf = 0.13;
   p.jumpBuf = Math.max(0, p.jumpBuf - dt);
   p.coyote = p.onGround ? 0.1 : Math.max(0, p.coyote - dt);
+  if (p.diving || p.diveLand > 0) p.jumpBuf = 0; // a dive cannot be cancelled
   if (p.jumpBuf > 0 && !p.mantle) {
     if (p.slideT > 0) { // slide-cancel jump keeps momentum
       endSlide(p); if (setStance(p, 'stand')) { p.vel[1] = JUMP_V; p.onGround = false; sfxJump(); } p.jumpBuf = 0;
+    }
+    else if (p.stance === 'crouch' && G.time - (p.slideEndT || -9) < 0.45 && p.onGround) { // just after a slide: jump straight out of it
+      if (setStance(p, 'stand')) { p.vel[1] = JUMP_V; p.onGround = false; sfxJump(); } p.jumpBuf = 0;
     }
     else if (p.stance === 'prone') { changeStance(p, 'crouch'); p.jumpBuf = 0; }
     else if (p.stance === 'crouch') { changeStance(p, 'stand'); p.jumpBuf = 0; }
@@ -180,15 +184,18 @@ function updatePlayer(p, a, dt) {
   // ---------- sprint (press or hold Shift + forward) ----------
   const maxSt = hasPerk('ec') ? 8 : 4;
   const wantAds = a.ads && p.swapT <= 0 && p.meleeT <= 0 && !p.mantle && (w.reloadT <= 0 || w.shellMode) && !p.diving && p.proneTrans <= 0 && p.crawl < 0.5;
-  const canSprintNow = a.my > 0.5 && p.stamina > 0.3 && !a.ads && p.ads < 0.3 && !p.holding && !(p.slideT > 0) && !p.diving && !p.cPend && !p.zPend && p.diveLand <= 0;
+  p.sprintLock = Math.max(0, (p.sprintLock || 0) - dt);
+  const canSprintNow = a.my > 0.5 && p.sprintLock <= 0 && !p.exhausted && p.stamina > 0.3 && !a.ads && p.ads < 0.3 && !p.holding && !(p.slideT > 0) && !p.diving && !p.cPend && !p.zPend && p.diveLand <= 0;
   if (!p.sprint && canSprintNow && (a.sprintP || (a.sprintHeld && p.stance === 'stand'))) {
     if (p.stance !== 'stand') changeStance(p, 'stand');
     if (p.stance === 'stand') p.sprint = true; // reloading continues while sprinting
   }
   const stopSprint = () => { if (p.sprint) { p.sprint = false; p.sprintOutT = d.sprintOut; } };
-  if (p.sprint && !p.cPend && !p.zPend && (a.my < 0.5 || p.stamina <= 0 || wantAds || p.stance !== 'stand' || p.fireBuf > 0)) stopSprint();
+  if (p.sprint && p.stamina <= 0) { stopSprint(); p.exhausted = true; p.sprintLock = 1.0; }
+  if (p.sprint && !p.cPend && !p.zPend && (a.my < 0.5 || wantAds || p.stance !== 'stand' || p.fireBuf > 0)) stopSprint();
   p.sprintDur = p.sprint ? (p.sprintDur || 0) + dt : 0;
   if (p.sprint) p.stamina = Math.max(0, p.stamina - dt);
+  else if (p.exhausted) { p.stamina = Math.min(maxSt, p.stamina + dt * maxSt / 1.0); if (p.stamina >= maxSt && p.sprintLock <= 0) p.exhausted = false; }
   else p.stamina = Math.min(maxSt, p.stamina + dt * 1.0);
   p.sprintOutT = Math.max(0, p.sprintOutT - dt);
 
@@ -382,7 +389,7 @@ function startSlide(p, fwd, d) {
   p.sprint = false; p.sprintOutT = 0.12;
   setStance(p, 'crouch'); p.h = 1.05; p.stanceKick = 1; p.stanceDir = 1; sfxSlide();
 }
-function endSlide(p) { if (!(p.slideT > 0)) return; p.slideT = 0; p.slideCD = 0.45; if (p.stance === 'crouch') p.h = STANCE.crouch.h; }
+function endSlide(p) { if (!(p.slideT > 0)) return; p.slideT = 0; p.slideEndT = G.time; p.slideCD = 0.45; if (p.stance === 'crouch') p.h = STANCE.crouch.h; }
 function startDive(p, fwd, d) {
   if (!p.onGround) return;
   const hs = Math.max(Math.hypot(p.vel[0], p.vel[2]), 6.5);
@@ -426,7 +433,7 @@ function playerShoot(p, w) {
     const f2 = coneDir(f, spread * DEG), e0 = V.add(eyePos(p), V.mul(f2, 0.6));
     const sp = d.proj === 'plasma' ? 70 : 42;
     const zr = G.zm ? Math.max(1, G.zm.round) : 1;
-    G.projs.push({ type: d.proj, pos: e0, start: e0.slice(), vel: V.mul(f2, sp), owner: p, team: p.team, t: 0, dmg: d.proj === 'plasma' ? (w.up ? 2500 : 1100) : d === WPN.m32 ? (300 + 150 * zr) * (w.up ? 2 : 1) : 0, def: d === WPN.m32 ? d : null });
+    G.projs.push({ type: d.proj, pos: e0, start: e0.slice(), vel: V.mul(f2, sp), owner: p, team: p.team, t: 0, dmg: d.proj === 'plasma' ? (G.zm ? (w.up ? 5000 : 2200) : (w.up ? 2500 : 1100)) : d === WPN.m32 ? (600 + 260 * zr) * (w.up ? 2 : 1) : 0, def: d === WPN.m32 ? d : null });
     if (d.proj === 'plasma') sfxPlasma(0);
     p.recoilP += d.recoil; alertBots(p, d, false);
     return;

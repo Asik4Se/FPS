@@ -10,14 +10,15 @@ const zmKnifeDmg = () => 150 + (G.zm ? Math.max(0, G.zm.round - 1) * 30 : 0);
 // zombie-mode damage profile (separate from multiplayer, like the original):
 // per-bullet body damage and headshot multiplier. Round 1 zombie = 150 HP, +100 per round up to 9, then x1.1 per round.
 const ZDMG = {
-  vx50: [1000, 4], bls7: [900, 4], as50x: [600, 3.5], dr90: [450, 3.5], svu: [400, 3.5],
-  ar94: [150, 3], m8: [170, 3], sw56: [130, 3], ls60: [160, 2.5],
-  sm7: [105, 3], msc: [115, 3], pd50: [95, 3],
-  r870: [110, 1.5], sg12: [80, 1.5], ex9: [70, 1.5],
-  p9: [60, 3], b23: [70, 3],
-  rpd: [180, 2.5], ksg: [130, 1.5], python: [500, 2.5],
+  vx50: [1400, 4], bls7: [1250, 4], as50x: [850, 3.5], dr90: [650, 3.5], svu: [560, 3.5],
+  ar94: [210, 3], m8: [240, 3], sw56: [185, 3], ls60: [225, 2.5],
+  sm7: [150, 3], msc: [160, 3], pd50: [135, 3],
+  r870: [155, 1.5], sg12: [115, 1.5], ex9: [100, 1.5],
+  p9: [85, 3], b23: [100, 3],
+  // mystery-box exclusives hit much harder
+  rpd: [420, 3], ksg: [300, 1.8], python: [1400, 3],
 };
-const ZDMG_CLS = { sniper: [500, 3.5], ar: [140, 3], lmg: [150, 2.5], smg: [100, 3], sg: [130, 1.5], pistol: [60, 3] };
+const ZDMG_CLS = { sniper: [700, 3.5], ar: [200, 3], lmg: [210, 2.5], smg: [140, 3], sg: [180, 1.5], pistol: [85, 3] };
 function zmWeaponDamage(d, zone, dist, att) {
   const id = d._zid || (d._zid = Object.keys(WPN).find(k => WPN[k] === d) || '-');
   const [base, head] = ZDMG[id] || ZDMG_CLS[d.cls] || [100, 2];
@@ -27,6 +28,27 @@ function zmWeaponDamage(d, zone, dist, att) {
   if (att && att.has('sup')) k *= 0.9;
   const zm = zone === 'head' ? head : zone === 'neck' ? Math.max(1.5, head * 0.5) : zone === 'upper' || zone === 'lower' ? 1 : 0.85;
   return base * k * zm;
+}
+// find the top of the obstacle just ahead and climb onto it (cars, crates, containers up to ~2.8 m)
+function zmTryVault(b, dx, dz, wantUp) {
+  const q = [b.pos[0] + dx * 0.55, 0, b.pos[2] + dz * 0.55];
+  const hits = boxesNear(q[0], q[2], 1.2).filter(bx => !(bx.ground || bx.flat || bx.noRay || bx.invis) && q[0] >= bx.mn[0] - 0.2 && q[0] <= bx.mx[0] + 0.2 && q[2] >= bx.mn[2] - 0.2 && q[2] <= bx.mx[2] + 0.2).sort((x, y) => x.mn[1] - y.mn[1]);
+  let top = b.pos[1];
+  for (const bx of hits) if (bx.mn[1] <= top + 0.6) top = Math.max(top, bx.mx[1]); // stacked parts (car body + cabin, crate on crate)
+  const rise = top - b.pos[1];
+  if (rise < 0.4 || rise > 2.9 || (!wantUp && rise > 1.3)) return false;
+  for (const f of [0.95, 1.4, 0.65, 1.9]) {
+    const land = [b.pos[0] + dx * f, top, b.pos[2] + dz * f];
+    if (!spaceFree(land, 0.28, 1.7)) continue;
+    b.vault = { a: b.pos.slice(), b: land, t: 0, dur: 0.45 + rise * 0.22 }; b.climbK = 0; b.yaw = Math.atan2(-dx, -dz);
+    return true;
+  }
+  return false;
+}
+function zmAmmoCost(w) {
+  const d = w.d, id = d._zid || (d._zid = Object.keys(WPN).find(k => WPN[k] === d) || '-');
+  const base = ZWONDER.includes(id) ? 2500 : { pistol: 200, smg: 400, ar: 500, lmg: 600, sg: 450, sniper: 750, launcher: 1000 }[d.cls] || 500;
+  return Math.round(base * (w.up ? 3 : 1) * (ZBOX_ONLY.includes(id) ? 1.5 : 1) / 50) * 50;
 }
 function zmCount(r) { return r <= 5 ? [6, 8, 13, 18, 24][r - 1] : Math.min(90, Math.floor(24 + (r - 5) * 6)); }
 function zmHP(r) { return r < 10 ? 150 + 100 * (r - 1) : Math.floor(950 * Math.pow(1.1, r - 9)); }
@@ -77,7 +99,7 @@ function zmSpawnOne() {
   const r = z.round, roll = Math.random();
   const sprintP = clamp((r - 4) * 0.13, 0, 0.85), jogP = clamp((r - 2) * 0.25, 0, 1);
   const kind = roll < sprintP ? 'sprint' : roll < sprintP + jogP * (1 - sprintP) ? 'jog' : 'walk';
-  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: { walk: 1.25, jog: 2.7, sprint: 4.7 }[kind] * rand(0.9, 1.1),
+  Object.assign(b, { isZombie: true, team: 'Z', pos: [sp[0], 0, sp[1]], win, wst: win ? 'tear' : null, hp: zmHP(r), kind, spd: kind === 'sprint' ? BASE_SPEED * 1.5 * rand(0.86, 0.93) : { walk: 1.35, jog: 3.3 }[kind] * rand(0.92, 1.08),
     rise: 0, atkT: 0, walkT: rand(0, 6), yaw: rand(0, 6.28), stance: 'stand', pose: null, pitch: -0.25, skin: pick(ZSKINS), stuckT: 0, lastPos: [0, 0, 0], bob: rand(0, 6) });
   b.vel = [0, 0, 0];
   G.zombies.push(b); G.ents.push(b);
@@ -129,10 +151,16 @@ function updateZombies(dt) {
     if (b.rise < 1) { b.rise = Math.min(1, b.rise + dt * 0.9); continue; }
     b.atkT -= dt;
     if (zqWindowZombie(b, dt, P)) continue;
+    if (b.vault) { // climbing up onto a car / crate / container
+      const v = b.vault; v.t += dt / v.dur; const k = Math.min(1, v.t), up = Math.min(1, k * 1.7), fw = clamp((k - 0.4) / 0.6, 0, 1);
+      b.pos = [lerp(v.a[0], v.b[0], fw), lerp(v.a[1], v.b[1], up) + Math.sin(k * Math.PI) * 0.15, lerp(v.a[2], v.b[2], fw)]; b.climbK = k; b.stance = k > 0.2 && k < 0.8 ? 'crouch' : 'stand';
+      if (k >= 1) { b.vault = null; b.climbK = null; b.pos = v.b.slice(); b.vel = [0, 0, 0]; b.stance = 'stand'; }
+      continue;
+    }
     const dx = P.pos[0] - b.pos[0], dz = P.pos[2] - b.pos[2], dist = Math.hypot(dx, dz);
     let mx = 0, mz = 0;
     if (P.alive) {
-      if (dist < 9 && Math.abs(P.pos[1] - b.pos[1]) < 1.6 && walkClear(b.pos, P.pos)) { mx = dx / dist; mz = dz / dist; }
+      if ((dist < 9 && Math.abs(P.pos[1] - b.pos[1]) < 1.6 && walkClear(b.pos, P.pos)) || (dist < 5 && P.pos[1] - b.pos[1] > 0.35)) { mx = dx / dist; mz = dz / dist; }
       else if (z.flow) {
         const [ci, cj] = navCell(b.pos[0], b.pos[2]), gh = W.gh; let best = z.flow[ci * gh + cj], bi = ci, bj = cj;
         for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { const ni = ci + di, nj = cj + dj; if (!navFree(ni, nj)) continue; if (di && dj && (!navFree(ci + di, cj) || !navFree(ci, cj + dj))) continue; const v = z.flow[ni * gh + nj]; if (v < best) { best = v; bi = ni; bj = nj; } }
@@ -152,11 +180,12 @@ function updateZombies(dt) {
     b.vel[0] = approach(b.vel[0], mx * spd, 20 * dt); b.vel[2] = approach(b.vel[2], mz * spd, 20 * dt); b.vel[1] -= GRAV * dt;
     const r = moveEntity(b, b.vel[0] * dt, b.vel[1] * dt, b.vel[2] * dt, 0.28, 1.75, 0.46);
     if (r.ground) b.vel[1] = 0;
+    if (r.hitWall && r.ground && ml > 0.1 && P.alive && (P.pos[1] - b.pos[1] > 0.35 || dist > 2)) zmTryVault(b, mx / ml, mz / ml, P.pos[1] - b.pos[1] > 0.35);
     if (ml > 0.1) b.yaw += clamp(angDiff(b.yaw, Math.atan2(-mx, -mz)), -6 * dt, 6 * dt);
     b.walkT += dt * Math.hypot(b.vel[0], b.vel[2]) * 2.0;
     if (z.groanT <= 0 && dist < 22 && Math.random() < 0.15) { z.groanT = rand(0.4, 1.2); const rel = angDiff(P.camYaw, Math.atan2(-(b.pos[0] - P.pos[0]), -(b.pos[2] - P.pos[2]))); sfxGroan(dist, clamp(-Math.sin(rel), -1, 1)); }
     b.stuckT += dt;
-    if (b.stuckT > 3) { if (V.dist2(b.pos, b.lastPos) < 0.5 && dist > 3) { b.pos[1] = 0; b.vel = [0, 0, 0]; } b.stuckT = 0; b.lastPos = b.pos.slice(); }
+    if (b.stuckT > 3) { if (V.dist2(b.pos, b.lastPos) < 0.5 && dist > 3) { b.vel = [0, 0, 0]; } b.stuckT = 0; b.lastPos = b.pos.slice(); }
   }
   // cleanup corpses
   for (const b of G.zombies) if (!b.alive && G.time - b.deathT > 2.6) b.gone = true;
@@ -192,6 +221,11 @@ function zmNear() {
       return { kind: 'wall', b, cost, has, text: has ? `[F] ${has.d.name}${has.up ? '改' : ''} の弾薬（${cost}）` : `[F] ${WPN[b.wid].name} を購入（${cost}）` };
     }
     if (b.type === 'perk' && dist < 1.9 && z.parts && !z.power) return { kind: 'info', text: `${ZPERKS[b.perk].name}：電源が入っていない` };
+    if (b.type === 'ammo' && dist < 1.9) {
+      const w = curW(P), max = w.d.res * (w.up ? 2 : 1), c = zmAmmoCost(w);
+      if (w.d.melee || !max) return { kind: 'info', text: '弾薬ボックス' };
+      return w.res >= max && w.mag >= w.magMax ? { kind: 'info', text: `弾薬ボックス — ${w.d.name}${w.up ? '改' : ''} は満タン` } : { kind: 'ammo', b, cost: c, text: `[F] 弾薬ボックス — ${w.d.name}${w.up ? '改' : ''} の弾を補充（${c}）` };
+    }
     if (b.type === 'pap' && dist < 2.2 && z.parts && !(z.power && z.fuseIn >= 3)) return { kind: 'info', text: `改造台は停止中（電源 ${z.power ? '○' : '×'}／ヒューズ ${z.fuseIn}/3）` };
     if (b.type === 'perk' && dist < 1.9) { const pk = ZPERKS[b.perk]; return { kind: 'perk', b, cost: pk.cost, text: z.perks.has(b.perk) ? `${pk.name}（所持済み）` : `[F] ${pk.name}を飲む（${pk.cost}）— ${pk.desc}` }; }
     if (b.type === 'pap' && dist < 2.2) { const w = curW(P); return { kind: 'pap', b, cost: 5000, text: w.up ? '改造済み' : `[F] ${w.d.name} を改造（5000）` }; }
@@ -213,8 +247,9 @@ function zmGive(P, wid) {
 }
 function zmUse(P) {
   const z = G.zm, n = zmNear(); if (!n || n.kind === 'info' || n.kind === 'window') return;
-  if (!['door', 'wall', 'perk', 'pap', 'box', 'take', 'busy'].includes(n.kind)) { zqUse(P, n); return; }
+  if (!['door', 'wall', 'perk', 'pap', 'box', 'take', 'busy', 'ammo'].includes(n.kind)) { zqUse(P, n); return; }
   const pay = c => { if (z.points < c) { sfxDeny(); popup('ポイントが足りない', '#ff6a5a'); return false; } z.points -= c; sfxBuy(); return true; };
+  if (n.kind === 'ammo') { const w = curW(P); if (pay(n.cost)) { w.res = w.d.res * (w.up ? 2 : 1); w.mag = w.magMax; popup(`${w.d.name} の弾を補充`, '#9fe0ff'); } return; }
   if (n.kind === 'door') { if (pay(n.cost)) { openDoor(n.d); popup('ドアが開いた', '#fff'); G.zm.flowT = 0; } }
   else if (n.kind === 'wall') { if (n.has) { if (n.has.res < n.has.d.res * (n.has.up ? 2 : 1) && pay(n.cost)) n.has.res = n.has.d.res * (n.has.up ? 2 : 1); } else if (pay(n.cost)) zmGive(P, n.b.wid); }
   else if (n.kind === 'perk') {
