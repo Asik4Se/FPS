@@ -51,8 +51,9 @@ function startGame() {
   $('menu').classList.remove('on'); $('endscr').classList.remove('on');
   resume();
 }
+function releaseFocus() { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); IN.keys = {}; IN.pressed = {}; }
 function resume() {
-  $('pause').classList.remove('on'); G.paused = false; audioInit();
+  $('pause').classList.remove('on'); G.paused = false; audioInit(); releaseFocus();
   lockPointer();
 }
 function lockPointer() {
@@ -108,14 +109,25 @@ function frame(now) {
   fpsAcc += dt; fpsN++;
   if (fpsAcc > 0.5) {
     G.fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
+    // dynamic resolution: only react to SUSTAINED low fps (a single hitch must not trigger a costly canvas reallocation)
     if (SET.autoRes && G.running && !G.paused) {
-      if (G.fps < 50 && R.dyn > 0.5) R.dyn = Math.max(0.5, R.dyn - 0.1);
-      else if (G.fps > 58 && R.dyn < 1) { G._goodT = (G._goodT || 0) + 1; if (G._goodT > 4) { R.dyn = Math.min(1, R.dyn + 0.05); G._goodT = 0; } }
+      G._lowN = G.fps < 50 ? (G._lowN || 0) + 1 : 0;
+      G._goodN = G.fps > 58 ? (G._goodN || 0) + 1 : 0;
+      const since = now - (G._dynT || 0);
+      if (G._lowN >= 3 && R.dyn > 0.5 && since > 2000) { R.dyn = Math.max(0.5, R.dyn - 0.1); G._lowN = 0; G._dynT = now; }
+      else if (G._goodN >= 8 && R.dyn < 1 && since > 4000) { R.dyn = Math.min(1, R.dyn + 0.1); G._goodN = 0; G._dynT = now; }
     }
   }
   resize($('gl'), $('hud'));
-  // low-latency: wait for the previous frame to finish on the GPU (max 1 frame in flight), then sample input as late as possible
-  if (SET.lowLat && G.running && !G.paused && R.gl) R.gl.readPixels(0, 0, 1, 1, R.gl.RGBA, R.gl.UNSIGNED_BYTE, SYNC_PX);
+  // low-latency: wait for the previous frame to finish on the GPU (max 1 frame in flight), then sample input as late as possible.
+  // If the driver ever blocks here for long (which would freeze input handling), back off automatically for a while.
+  if (SET.lowLat && G.running && !G.paused && R.gl && !document.hidden && now > (G._syncOffUntil || 0)) {
+    const t0 = performance.now();
+    R.gl.readPixels(0, 0, 1, 1, R.gl.RGBA, R.gl.UNSIGNED_BYTE, SYNC_PX);
+    const blocked = performance.now() - t0;
+    G._syncSlow = blocked > 10 ? (G._syncSlow || 0) + 1 : Math.max(0, (G._syncSlow || 0) - 0.05);
+    if (blocked > 40 || G._syncSlow >= 3) { G._syncOffUntil = now + 5000; G._syncSlow = 0; }
+  }
   const a = gatherActions(dt);
   _sndBudget = 0;
   if (a.pauseP && G.running && !G.over) { if (G.paused) resume(); else pauseGame(); }

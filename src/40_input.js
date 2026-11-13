@@ -46,7 +46,7 @@ const bHeld = act => { for (const c of BIND[act]) if (c && (c.startsWith('Mouse'
 const bPress = act => { for (const c of BIND[act]) if (c && (c.startsWith('Mouse') ? IN.mbP[+c[5]] : IN.pressed[c])) return true; return false; };
 addEventListener('keydown', e => {
   if (IN.listen) { e.preventDefault(); e.stopPropagation(); const f = IN.listen; IN.listen = null; f(e.code === 'Escape' ? null : (e.code === 'Backspace' || e.code === 'Delete') ? '' : e.code); return; }
-  const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA');
+  const typing = !IN.locked && e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA');
   if (!typing && (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow') || (IN.locked && BOUND_MAP[e.code]))) e.preventDefault();
   if (typing) return;
   if (!IN.keys[e.code]) IN.pressed[e.code] = true;
@@ -64,6 +64,9 @@ addEventListener('mouseup', e => { if (e.button <= 4) IN.mb[e.button] = false; i
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('wheel', e => { if (IN.locked) { IN.wheel += Math.sign(e.deltaY); } }, { passive: true });
 addEventListener('blur', () => { IN.keys = {}; IN.mb = [false, false, false, false, false]; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { IN.keys = {}; IN.mb = [false, false, false, false, false]; } });
+// while the pointer is locked a focused field must never swallow game keys
+document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement) { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); } });
 
 function readPad() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
